@@ -1,0 +1,11 @@
+# Compilados de Python: se regeneran solos, no son parte del programa.
+__pycache__/
+*.pyc
+
+# Registro de errores y ajustes: viven en la carpeta de datos del usuario
+# (%LOCALAPPDATA%\LectorPDF), nunca aca. Por las dudas, si alguno aparece:
+errores_de_la_ultima_sesion.txt
+ultimo_error.txt
+
+# Archivos temporales que deja un guardado interrumpido.
+*.tmp-lector

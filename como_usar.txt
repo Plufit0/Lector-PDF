@@ -1,0 +1,106 @@
+LECTOR PDF
+==========
+
+Leer un manual de diseno y marcarlo encima para devolverselo al agente.
+
+
+Para que es
+-----------
+Vos ves un solo documento marcado. El agente recibe dos cosas separadas: el
+texto original del manual y, aparte, cada marca tuya anclada al parrafo sobre
+el que cae.
+
+
+Abrirlo
+-------
+Doble clic en el icono “Lector PDF” del escritorio (una hoja con un trazo
+rojo). Se abre mostrando los PDFs de Descargas, el mas nuevo arriba y ya
+seleccionado. Doble clic o Enter sobre el que quieras.
+
+  * Si el PDF esta en otra carpeta: boton “Otra carpeta...”, arriba a la
+    derecha.
+
+
+Leer y marcar es la misma postura
+---------------------------------
+No hay que cambiar de modo para pasar de una cosa a la otra:
+
+  Rueda del mouse            Leer. Siempre, hagas lo que hagas. Al llegar al
+                             final de la hoja, el siguiente tiron pasa de
+                             pagina.
+  Arrastrar                  Dibujar. Sin apretar ningun boton antes.
+
+Las herramientas
+----------------
+  D  o  boton Dibujar        Dibujar a mano alzada.
+  T  o  boton Texto          Escribir una nota: clic donde la querés,
+                             escribis, Esc.
+  S  o  boton Seleccionar    Agarrar lo ya hecho para moverlo o cambiarlo, y
+                             tambien seleccionar texto del PDF para copiarlo.
+  B  o  boton Borrar         Borrar una marca: clic encima de ella.
+
+Modo Seleccionar, en detalle
+----------------------------
+  Clic sobre una marca       La selecciona y abre el panel de la derecha.
+  Arrastrar una marca        La mueve de lugar.
+  Ctrl + clic                Sumar o sacar marcas de la seleccion.
+  Arrastrar en un vacio      Selecciona el texto del PDF que toques.
+  Ctrl + C                   Copia el texto del PDF que hayas seleccionado.
+  Doble clic en una nota     Editar lo que dice.
+  Comentar esta frase        Con una frase del manual elegida: el programa
+                             pasa a modo Texto y esperas a hacer clic donde
+                             queres la nota. Esa nota queda ATADA a la frase.
+  Dibujar sobre esta frase   Lo mismo, pero lo que sigue es un dibujo.
+  Referencia a...            En el panel de cualquier marca: “Elegir” y
+                             despues arrastras sobre una frase del manual, o
+                             haces clic en otra marca. “Quitar” la desata.
+  Supr                       Borrar lo seleccionado.
+  * Con varios dibujos seleccionados aparece “Unificar”: los junta en un
+    solo dibujo, para que el agente los lea como una sola marca y no como
+    tres sueltas.
+
+  * Atar una marca a una frase es opcional: si no lo haces, todo funciona
+    como siempre. Atada, el agente sabe exactamente a que palabras te
+    referis, sin deducirlo por donde quedo pegada. Esc cancela si te
+    arrepentis.
+
+
+Lo demas
+--------
+  Ctrl + Z  /  Ctrl + Y      Deshacer y rehacer.
+  Colores y Grueso           El color del trazo y de la letra. Rojo es el de
+                             entrada.
+  Pagina / Ancho / + / -     Ver la hoja entera o agrandada. El numero de
+                             pagina se puede escribir y apretar Enter.
+  Flechas  o  Re/Av Pag      Cambiar de pagina.
+
+Guardar y pasarmelo
+-------------------
+Boton Guardar, o Ctrl+S. Elegis carpeta y nombre; te propone el del manual con
+“-devolucion” al final. Al guardar, el programa copia solo al portapapeles
+todo lo que el agente necesita: vas al chat y apretas Ctrl+V. No hace falta
+explicar nada.
+
+  * Podes guardar cuantas veces quieras. Si volves a abrir un PDF que ya
+    marcaste, tus marcas siguen ahi y podes agregarle mas.
+
+
+Cosas que conviene saber
+------------------------
+El manual original nunca se toca: siempre se guarda una copia nueva. Las
+marcas quedan como anotaciones de PDF, no aplastadas contra la hoja, y por eso
+se pueden seguir editando despues. Si cerras con marcas sin guardar, el
+programa te avisa. Un clic suelto sin arrastrar no deja ninguna marca.
+
+
+Si algo no anda
+---------------
+Si aparece un cartel de error, pasaselo al agente tal cual. El detalle de
+TODOS los errores de la sesion queda guardado, y el boton “Ver errores” de
+esta ventana te dice donde.
+
+
+
+El programa vive en C:\Program Files\Mios\LectorPDF.
+Los errores quedan anotados en la carpeta LectorPDF de tus datos locales.
+Este mismo instructivo esta en el boton “?” del programa.
