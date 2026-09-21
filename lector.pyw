@@ -553,6 +553,7 @@ class Visor(ttk.Frame):
         self._editor_color = self.color
         self._editor_ancho = None
         self._editor_cuerpo = None
+        self._medidor = None        # cuadro escondido que mide los renglones de la nota
         self._editor_fuente = None
         self._cursor_actual = CURSORES[self.modo]
         self._ultimo_salto = (0, 0.0)   # (direccion, momento) del ultimo salto con la rueda
@@ -2580,6 +2581,11 @@ class Visor(ttk.Frame):
                                highlightthickness=0, padx=pad, pady=pad,
                                spacing1=aire // 2, spacing3=aire - aire // 2,
                                insertbackground=a_hex(self._editor_color))
+        # Cuadro auxiliar escondido para medir los renglones (ver _renglones_tk).
+        self._medidor = tk.Text(self.canvas, wrap="word", font=fuente, padx=pad, pady=pad,
+                                bd=1, relief="solid", highlightthickness=0,
+                                spacing1=aire // 2, spacing3=aire - aire // 2)
+        self._medidor.place(x=-20000, y=-20000, width=100, height=100)
         self._editor_win = self.canvas.create_window(cx, cy, anchor="nw", window=self._editor,
                                                      width=A.ANCHO_MIN_NOTA * f * self.zoom)
         if texto:
@@ -2588,28 +2594,79 @@ class Visor(ttk.Frame):
         self._crecer_editor()
         self._editor.bind("<Escape>", lambda e: (self._cerrar_editor(confirmar=True), "break")[1])
         self._editor.bind("<Control-Return>", lambda e: (self._cerrar_editor(confirmar=True), "break")[1])
-        self._editor.bind("<KeyRelease>", self._crecer_editor)
+        # El cuadro se acomoda EN EL MOMENTO en que cambia el texto (evento
+        # <<Modified>>), no al soltar la tecla: Tk mete la letra al apretar, y si el
+        # cuadro se agrandaba recien al soltar, entre una cosa y otra el texto se
+        # partia en un renglon que no entraba en el alto viejo y saltaba de lugar
+        # (el parpadeo al llegar al borde derecho).
+        self._editor.bind("<<Modified>>", self._al_modificar_editor)
         self.pie.config(text=t("pie_escribiendo"))
+
+    def _al_modificar_editor(self, _e=None):
+        """Cambio el texto del cuadro: acomodarlo antes de que se vuelva a dibujar."""
+        ed = self._editor
+        if ed is None or not ed.edit_modified():
+            return
+        ed.edit_modified(False)     # rearmar el aviso para el proximo cambio
+        self._crecer_editor()
+
+    def _renglones_tk(self, texto, ancho_px):
+        """Cuantos renglones parte Tk de verdad un texto en un cuadro de ese ancho.
+
+        Se mide en un cuadro auxiliar escondido (fuera del lienzo visible) con la
+        misma letra, margenes y ancho que el de escribir. No se usa el conteo
+        que trae Tk ("count -displaylines"): con datos atrasados o palabras muy
+        largas contaba un renglon de menos. Preguntar renglon por renglon es
+        exacto. Y como el auxiliar no se ve, el cuadro real recibe ancho y alto
+        de una sola vez: sin estados intermedios que parpadeen.
+        """
+        m = self._medidor
+        if m is None:
+            return None
+        try:
+            m.place_configure(width=max(1, int(ancho_px)), height=4000)
+            m.delete("1.0", "end")
+            m.insert("1.0", texto)
+            m.update_idletasks()
+            n, i = 0, "1.0"
+            while n < 800:
+                if not m.dlineinfo(i):
+                    break
+                n += 1
+                siguiente = m.index("%s + 1 display lines" % i)
+                if siguiente == i:
+                    break
+                i = siguiente
+            return max(1, n)
+        except tk.TclError:
+            return None
 
     def _crecer_editor(self, _e=None):
         """El cuadro de escribir crece con el texto, como la nota terminada.
 
-        Ancho y renglones salen de la misma cuenta que la caja final
-        (A.medir_nota / A.lineas_nota): lo que se ve al escribir es lo que queda.
+        El ANCHO sale de la misma cuenta que la caja final (A.lineas_nota): lo que
+        se ve al escribir es lo que queda. El ALTO sale de los renglones que Tk
+        parte de verdad (ver _renglones_tk): Tk mide la letra a su manera y a
+        veces corta un renglon distinto que el PDF, y con el alto calculado
+        aparte el cuadro quedaba un renglon de mas o de menos.
         """
-        if self._editor is None:
+        ed = self._editor
+        if ed is None:
             return
-        texto = self._editor.get("1.0", "end-1c")
+        texto = ed.get("1.0", "end-1c")
         lineas = A.lineas_nota(texto, self._editor_ancho, self._editor_cuerpo)
         # Ancho = el renglon mas ancho TAL COMO LO DIBUJA la pantalla (misma
         # razon que en _dibujar_marca: medido "de libro" quedaba aire a la
         # derecha), mas los margenes, el borde y lugar para el cursor.
         mas_ancho = max([self._editor_fuente.measure(l) for l in lineas] + [0])
         minimo = A.ANCHO_MIN_NOTA * A.escala_nota(self._editor_cuerpo) * self.zoom
-        pad = int(self._editor.cget("padx"))
-        self.canvas.itemconfigure(self._editor_win,
-                                  width=max(minimo, mas_ancho + 2 * pad + 2 + 4))
-        self._editor.config(height=max(1, len(lineas)))
+        pad = int(ed.cget("padx"))
+        ancho = max(minimo, mas_ancho + 2 * pad + 2 + 4)
+        renglones = self._renglones_tk(texto, ancho) or len(lineas)
+        # Ancho y alto juntos, en el mismo instante: nada intermedio se dibuja.
+        self.canvas.itemconfigure(self._editor_win, width=ancho)
+        ed.config(height=renglones)
+        ed.yview_moveto(0)
 
     def _cerrar_editor(self, confirmar=True):
         if self._editor is None:
@@ -2622,8 +2679,11 @@ class Visor(ttk.Frame):
             self.canvas.delete(win)
             self.canvas.delete("guia_nota")
             ed.destroy()
+            if self._medidor is not None:
+                self._medidor.destroy()
         except Exception:
             pass
+        self._medidor = None
         original = getattr(self, "_editor_original", None)
         color = getattr(self, "_editor_color", None) or self.color
         texto = texto.rstrip()

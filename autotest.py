@@ -1152,6 +1152,38 @@ def main():
     check(v._editor is not None, "Enter con una nota elegida la abre para editarla")
     v._cerrar_editor(confirmar=False)
 
+    print("\n== 8am0. Escribir hasta el borde derecho no hace parpadear el texto ==")
+    # Bug reportado: al llegar al borde derecho con lo que se escribe, cada letra
+    # de mas hacia saltar el texto. Tk mete la letra al apretar la tecla; si el
+    # cuadro se acomodaba recien al soltarla, un instante el texto quedaba
+    # partido en un renglon que no entraba en el alto viejo y se corria fuera de
+    # la vista. Ahora el cuadro se acomoda apenas cambia el texto (<<Modified>>).
+    empezar_limpio()
+    v.set_modo("texto")
+    v._click(a_evento(40, 300))
+    app.update()
+    ed_ = v._editor
+    frase_larga = ("Esto es una nota que llega hasta el borde derecho del cuadro de texto "
+                   "y sigue escribiendo mucho mas texto " + "m" * 45)
+    corridos, altos_mal = [], []
+    for k_, ch_ in enumerate(frase_larga, 1):
+        ed_.insert("end", ch_)      # = apretar la tecla; sin _crecer_editor a mano
+        app.update()                # y dibujar: lo que veria la persona
+        yv_ = ed_.yview()
+        if yv_[0] > 0.0001 or yv_[1] < 0.9999:
+            corridos.append(k_)
+        esperado_ = v._renglones_tk(ed_.get("1.0", "end-1c"),
+                                    int(float(c.itemcget(v._editor_win, "width"))))
+        if int(ed_.cget("height")) != esperado_:
+            altos_mal.append(k_)
+    check(not corridos, "ninguna letra deja el texto corrido fuera de la vista",
+          "letras con salto: %s" % corridos[:8])
+    check(not altos_mal, "y el alto del cuadro siempre coincide con los renglones reales",
+          "letras con alto mal: %s" % altos_mal[:8])
+    check(v._medidor is not None, "el cuadro auxiliar de medida existe mientras se escribe")
+    v._cerrar_editor(confirmar=False)
+    check(v._medidor is None, "y se va al cerrar el cuadro")
+
     print("\n== 8am. Carpeta recordada ==")
     archivo_real = lector._archivo_carpeta
     lector._archivo_carpeta = lambda: os.path.join(tmp, "carpeta.txt")
