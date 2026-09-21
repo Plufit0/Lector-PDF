@@ -3,9 +3,16 @@
 Lector PDF — leer cualquier PDF y marcarlo encima para devolverselo a un agente.
 
 Flujo para el que fue hecho (no desviarse de esto sin pedirlo):
-  acceso directo en el escritorio -> abre mostrando los PDFs de Descargas ->
-  se abre uno -> se lee y se marca intercalando -> Guardar -> la ruta queda en
-  el portapapeles para pegarla en el chat.
+  abre mostrando los PDFs de la ultima carpeta usada -> se abre uno -> se lee
+  y se marca intercalando -> Guardar -> el mensaje para el chat queda en el
+  portapapeles.
+
+  Carpeta: decision del Disenador (sept-2026). Se recuerda la ultima carpeta
+  elegida ("Cambiar carpeta..." o la de un PDF abierto con "Abrir archivo..."),
+  entre sesiones, como pide la guia de Microsoft para los programas de
+  Windows. Solo la primera vez (o si esa carpeta ya no existe) abre Descargas.
+  Antes abria SIEMPRE Descargas, y quien guardaba sus PDFs en otro lado tenia
+  que ir a buscarlos cada vez.
 
 DECISIONES DE DISENO (leer antes de cambiar nada):
 
@@ -33,6 +40,20 @@ DECISIONES DE DISENO (leer antes de cambiar nada):
 
 6. Si una marca no se puede escribir, el programa lo dice con nombre y pagina.
    Nunca se guarda en silencio una devolucion incompleta.
+
+7. GUARDAR COMO EN LOS EDITORES (decision del Disenador, sept-2026). La primera
+   vez, Guardar (Ctrl+S) pregunta el nombre de la copia ("-devolucion"). Despues
+   guarda encima de esa misma copia sin preguntar. "Guardar como..."
+   (Ctrl+Shift+S) pregunta siempre. Una devolucion reabierta se guarda encima de
+   si misma. El PDF original nunca se toca.
+
+8. LA BARRA ESPACIADORA NO HACE NADA (decision del Disenador, sept-2026): ni
+   pasar de pagina ni arrastrar la hoja. Para eso estan Av Pag / Re Pag, la
+   rueda y la ruedita apretada.
+
+9. LA LETRA SUBRAYADA DE CADA HERRAMIENTA ES SU ATAJO (S, D, T, B; en ingles
+   S, D, T, E). Anda la letra sola y tambien Alt + letra, como en Windows.
+   Seleccionar va primero en la barra: es la de entrada.
 """
 
 import os
@@ -102,7 +123,44 @@ def _carpeta_descargas():
     return candidata if os.path.isdir(candidata) else os.path.expanduser("~")
 
 
+# Carpeta con la que arranca la lista. main() la cambia por la ultima que se
+# uso (ver carpeta_recordada); el autotest, que no pasa por main(), arranca
+# siempre en Descargas y nunca pisa la carpeta que dejo elegida el usuario.
 CARPETA_INICIAL = _carpeta_descargas()
+# Solo main() lo pone en True: recien ahi se escribe la carpeta elegida.
+RECORDAR_CARPETA = False
+
+
+def _archivo_carpeta():
+    """Donde se recuerda la ultima carpeta: al lado del idioma y del registro
+    de errores, en la carpeta de datos del usuario (Program Files es de solo
+    lectura)."""
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "LectorPDF", "carpeta.txt")
+
+
+def carpeta_recordada():
+    """La ultima carpeta usada, o None si no hay o ya no existe (un pendrive
+    que se saco, una carpeta borrada): en ese caso se vuelve a Descargas sin
+    ningun cartel."""
+    try:
+        with open(_archivo_carpeta(), encoding="utf-8") as f:
+            ruta = f.read().strip()
+        return ruta if ruta and os.path.isdir(ruta) else None
+    except OSError:
+        return None
+
+
+def recordar_carpeta(ruta):
+    """Anota la carpeta elegida para abrir ahi la proxima vez."""
+    if not RECORDAR_CARPETA:
+        return
+    try:
+        os.makedirs(os.path.dirname(_archivo_carpeta()), exist_ok=True)
+        with open(_archivo_carpeta(), "w", encoding="utf-8") as f:
+            f.write(ruta)
+    except OSError:
+        pass
 
 COLORES = [
     ("Rojo",     (0.88, 0.19, 0.19)),
@@ -123,10 +181,23 @@ ANCHO_PANEL = 258
 # poco de colchon la despega y se lee mas comoda.
 CUSHION_HOJA = 26
 # Cursor de cada herramienta. Un solo lugar: antes estaba copiado en cuatro
-# metodos y era facil que uno quedara distinto. La "manito" (fleur) queda
-# reservada para arrastrar la hoja con la ruedita apretada.
+# metodos y era facil que uno quedara distinto.
 CURSORES = {"dibujar": "pencil", "texto": "xterm", "seleccionar": "arrow",
             "borrar": "dotbox"}
+# La "manito" que agarra la hoja al arrastrarla con la ruedita apretada, como la
+# mano cerrada de Acrobat. Windows no trae ese cursor, asi que viaja con el
+# programa (mano.cur). Va entre llaves porque la ruta tiene espacios ("Program
+# Files") y Tk la partiria. Si el archivo faltara, queda la cruz de mover.
+_RUTA_MANO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mano.cur")
+CURSOR_MANO = ("{@%s}" % _RUTA_MANO.replace("\\", "/")) if os.path.isfile(_RUTA_MANO) else "fleur"
+# Herramientas en el orden de la barra: Seleccionar primero, que es la de
+# entrada (Figma, tldraw, Excalidraw, Office). La letra subrayada del nombre es
+# el atajo, asi que el atajo sale del texto del boton en el idioma activo.
+HERRAMIENTAS = ("seleccionar", "dibujar", "texto", "borrar")
+# Donde van las manijas de una nota elegida: 4 esquinas (tamano de letra) y
+# los 2 costados (ancho). Arriba y abajo no hay: el alto se ajusta solo.
+MANIJAS_ESQUINA = ("ai", "ad", "bi", "bd")      # arriba/abajo + izquierda/derecha
+MANIJAS_COSTADO = ("izq", "der")
 
 
 def mezclar(color, alfa, fondo=(1.0, 1.0, 1.0)):
@@ -222,6 +293,12 @@ class Globito:
             self._ventana = None
 
 
+def atajo_de(modo):
+    """La letra que elige una herramienta: la primera de su nombre, que es la
+    que va subrayada en el boton ("Seleccionar" -> s; en ingles "Erase" -> e)."""
+    return t("modo_" + modo)[:1].lower()
+
+
 def ruta_libre(carpeta, base):
     """Devuelve una ruta que no existe, numerando: -devolucion, -devolucion-2, ...
 
@@ -240,9 +317,10 @@ def ruta_libre(carpeta, base):
 class Biblioteca(ttk.Frame):
     """Pantalla inicial: los PDFs de una carpeta, el mas nuevo primero.
 
-    Arranca siempre en Descargas: es el flujo para el que fue hecho (se baja un
-    PDF y se lo abre). Se puede filtrar escribiendo, ordenar tocando el titulo
-    de una columna, o abrir un PDF de cualquier lado con "Abrir archivo...".
+    Arranca en la ultima carpeta usada (la primera vez, Descargas). "Cambiar
+    carpeta..." elige otra y queda recordada. Se puede filtrar escribiendo,
+    ordenar tocando el titulo de una columna, o abrir un PDF de cualquier lado
+    con "Abrir archivo...".
     """
 
     def __init__(self, app):
@@ -270,7 +348,7 @@ class Biblioteca(ttk.Frame):
         ttk.Button(barra, text=t("bib_otra_carpeta"),
                    command=self.elegir_carpeta).pack(side="right", padx=6)
         ttk.Button(barra, text=t("bib_actualizar"),
-                   command=self.refrescar).pack(side="right")
+                   command=lambda: self.refrescar(self._ruta_elegida())).pack(side="right")
 
         # Filtro: se escribe y la lista muestra solo los nombres que lo tienen.
         fila = ttk.Frame(self, padding=(12, 0, 12, 6))
@@ -321,9 +399,14 @@ class Biblioteca(ttk.Frame):
     def elegir_carpeta(self):
         c = filedialog.askdirectory(initialdir=self.carpeta, title=t("bib_elegir_carpeta_titulo"))
         if c:
-            self.carpeta = c
-            self.refrescar()
-            self.app.actualizar_titulo()
+            self.cambiar_carpeta(c)
+
+    def cambiar_carpeta(self, carpeta, seleccionar=None):
+        """Pasa a mostrar otra carpeta y la recuerda para la proxima vez."""
+        self.carpeta = os.path.normpath(carpeta)
+        recordar_carpeta(self.carpeta)
+        self.refrescar(seleccionar=seleccionar)
+        self.app.actualizar_titulo()
 
     def refrescar(self, seleccionar=None):
         # En la raiz de un disco ("D:\") el nombre de la carpeta queda vacio:
@@ -384,7 +467,10 @@ class Biblioteca(ttk.Frame):
 
         if self.archivos:
             # Al volver de un PDF, queda elegido el que se estaba mirando.
-            idx = self.archivos.index(seleccionar) if seleccionar in self.archivos else 0
+            # misma_ruta: el dialogo de Windows devuelve la ruta con "/" y la
+            # lista la tiene con "\": comparadas como texto no coincidian.
+            idx = next((k for k, r in enumerate(self.archivos)
+                        if seleccionar and A.misma_ruta(r, seleccionar)), 0)
             item = self.tabla.get_children()[idx]
             self.tabla.selection_set(item)
             self.tabla.focus(item)
@@ -451,8 +537,14 @@ class Visor(ttk.Frame):
         self._editor_xy = None
         self._pan = None
         self._rts = None            # recuadro de seleccion por area (boton derecho)
-        self._redimensionando = None  # nota a la que se le esta cambiando el ancho
+        self._redimensionando = None  # nota a la que se le mueve una manija
         self._cajas_notas = {}      # indice -> caja de cada nota tal como se dibujo
+        self._nota_arrastre = None  # modo Texto: arrastre que elige el ancho de la nota
+        self._borrando = None       # modo Borrar: pasada del borrador en curso
+        # A donde guarda Ctrl+S sin preguntar (decision 7). Una devolucion
+        # reabierta se guarda encima de si misma; un PDF original, nunca: la
+        # primera vez se pregunta el nombre de la copia.
+        self.ruta_guardado = ruta if A.es_devolucion(self.doc) else None
         # Estado del cuadro de escribir y de otras cosas de paso. Se declaran
         # aca para que ninguna funcion dependa de que otra las haya creado antes.
         self._editor_nombre = ""
@@ -460,6 +552,7 @@ class Visor(ttk.Frame):
         self._editor_original = None
         self._editor_color = self.color
         self._editor_ancho = None
+        self._editor_cuerpo = None
         self._editor_fuente = None
         self._cursor_actual = CURSORES[self.modo]
         self._ultimo_salto = (0, 0.0)   # (direccion, momento) del ultimo salto con la rueda
@@ -498,21 +591,14 @@ class Visor(ttk.Frame):
         self.vsb.pack(side="right", fill="y")
         self.canvas.pack(side="left", fill="both", expand=True)
 
-        # Barra de estado de abajo: el "ojito" para mostrar u ocultar las marcas,
-        # y a su lado una linea corta de estado (marcas y "sin guardar"). Antes
-        # aca habia un cartel largo con toda la ayuda; se saco por ruido.
+        # Barra de estado de abajo. En reposo queda VACIA (pedido del
+        # Disenador: "Seleccionar / N marca(s)" era texto innecesario; lo que
+        # falta guardar ya lo dice el asterisco del titulo, como en cualquier
+        # programa). Solo habla cuando hay que seguir un paso ("Hace clic donde
+        # quieras la nota...") o para confirmar algo ("Guardado en...").
         pie_barra = ttk.Frame(self)
         pie_barra.pack(fill="x")
-        self.btn_ojo = tk.Button(pie_barra, text="", width=12, takefocus=0,
-                                 command=self.toggle_ver_marcas)
-        Globito(self.btn_ojo, "tip_ojo")
-        self.btn_ojo.pack(side="left", padx=(8, 4), pady=2)
-        # El texto y el relieve del ojito dependen de si las marcas estan a la
-        # vista: al rehacer los widgets hay que reflejar el estado actual.
-        self.btn_ojo.config(
-            relief="sunken" if self.ver_marcas else "raised",
-            text=t("ojo_marcas") if self.ver_marcas else t("ojo_ocultas"))
-        self.pie = ttk.Label(pie_barra, text="", padding=(6, 4), foreground="#333")
+        self.pie = ttk.Label(pie_barra, text="", padding=(10, 4), foreground="#333")
         self.pie.pack(side="left", fill="x")
 
         self.canvas.bind("<Configure>", self._al_redimensionar)
@@ -567,8 +653,8 @@ class Visor(ttk.Frame):
 
     def _boton(self, padre, texto, comando, ancho=None, tip=None, **kw):
         """Boton de la barra. Todos del mismo tipo (antes se mezclaban dos
-        estilos), ninguno toma el foco del teclado (si lo tomaba, Espacio lo
-        volvia a apretar ademas de pasar de pagina) y cada uno con su cartel."""
+        estilos), ninguno toma el foco del teclado (si lo tomaba, Espacio o
+        Enter lo volvian a apretar) y cada uno con su cartel."""
         bt = tk.Button(padre, text=texto, command=comando, takefocus=0, **kw)
         if ancho:
             bt.config(width=ancho)
@@ -584,6 +670,11 @@ class Visor(ttk.Frame):
 
         # Lo de la derecha se empaqueta PRIMERO: en una pantalla angosta, lo que
         # se corta es lo ultimo empaquetado, y Guardar no se puede perder.
+        # Guardar es un boton partido, como en Office: el grande guarda, la
+        # flechita al lado ofrece "Guardar como...".
+        self.btn_guardar_mas = B(b, "▼", self._menu_guardar, 2, "tip_guardar_mas",
+                                 font=("Segoe UI", 7))
+        self.btn_guardar_mas.pack(side="right")
         self.btn_guardar = B(b, t("v_guardar"), self.guardar, 10, "tip_guardar",
                              font=("Segoe UI", 9, "bold"))
         self.btn_guardar.pack(side="right")
@@ -596,11 +687,13 @@ class Visor(ttk.Frame):
         B(b, t("v_carpeta"), self.app.volver_biblioteca, 10, "tip_carpeta").pack(side="left")
         ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
 
+        # Herramientas: Seleccionar primero, y la primera letra subrayada, que
+        # es su atajo (decision 9).
         self.btn_modo = {}
-        for clave, etiqueta in (("dibujar", t("modo_dibujar")), ("texto", t("modo_texto")),
-                                ("seleccionar", t("modo_seleccionar")), ("borrar", t("modo_borrar"))):
-            bt = B(b, etiqueta, lambda c=clave: self.set_modo(c),
-                   11 if clave == "seleccionar" else 8, "tip_" + clave, relief="raised")
+        for clave in HERRAMIENTAS:
+            bt = B(b, t("modo_" + clave), lambda c=clave: self.set_modo(c),
+                   11 if clave == "seleccionar" else 8, "tip_" + clave,
+                   relief="raised", underline=0)
             bt.pack(side="left", padx=2)
             self.btn_modo[clave] = bt
 
@@ -628,6 +721,13 @@ class Visor(ttk.Frame):
         self.lbl_zoom = ttk.Label(b, text="", width=5, anchor="w")
         self.lbl_zoom.pack(side="left", padx=(2, 0))
         Globito(self.lbl_zoom, "tip_zoom")
+        # Ocultar marcas: con lo demas de "ver", arriba (antes era un ojito en
+        # la barra de abajo, donde ningun programa lo pone). El texto dice lo
+        # que hace el boton; apretado queda hundido y de color, y pasa a decir
+        # "Mostrar marcas" (ver _pintar_ojo). Ancho fijo: no mueve la barra.
+        ancho_ojo = max(len(t("ojo_ocultar")), len(t("ojo_mostrar"))) + 2
+        self.btn_ojo = B(b, t("ojo_ocultar"), self.toggle_ver_marcas, ancho_ojo, "tip_ojo")
+        self.btn_ojo.pack(side="left", padx=(6, 0))
 
         ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
         B(b, "<", lambda: self.ir_pagina(self.pno - 1), 3, "tip_anterior").pack(side="left")
@@ -806,6 +906,8 @@ class Visor(ttk.Frame):
                                          command=self._editar_nota_seleccionada)
         self.btn_ancho_auto = tk.Button(self.pnl_acciones, text=t("pnl_ancho_auto"),
                                         command=self.ancho_automatico)
+        self.btn_letra_normal = tk.Button(self.pnl_acciones, text=t("pnl_letra_normal"),
+                                          command=self.letra_normal)
         self.btn_unificar = tk.Button(self.pnl_acciones, text=t("pnl_unificar"),
                                       command=self._unificar)
         self.btn_borrar = tk.Button(self.pnl_acciones, text=t("pnl_borrar"),
@@ -845,8 +947,8 @@ class Visor(ttk.Frame):
         for w in (self.pnl_texto_pdf, self.pnl_nombre_bloque, self.pnl_ref_bloque,
                   self.pnl_color_bloque, self.pnl_grosor, self.pnl_acciones):
             w.pack_forget()
-        for b in (self.btn_editar_nota, self.btn_ancho_auto, self.btn_unificar,
-                  self.btn_borrar, self.btn_soltar):
+        for b in (self.btn_editar_nota, self.btn_ancho_auto, self.btn_letra_normal,
+                  self.btn_unificar, self.btn_borrar, self.btn_soltar):
             b.pack_forget()
 
         marcas = self._marcas_seleccionadas()
@@ -909,6 +1011,8 @@ class Visor(ttk.Frame):
             self.btn_editar_nota.pack(fill="x", pady=(0, 3))
             if uno.get("ancho"):
                 self.btn_ancho_auto.pack(fill="x", pady=(0, 3))
+            if uno.get("cuerpo"):
+                self.btn_letra_normal.pack(fill="x", pady=(0, 3))
         if sum(1 for m in marcas if m["tipo"] == "lapiz") >= 2:
             self.btn_unificar.pack(fill="x", pady=(0, 3))
         self.btn_borrar.pack(fill="x", pady=(0, 3))
@@ -930,6 +1034,19 @@ class Visor(ttk.Frame):
                 activo = (self.modo_zoom == modo)
                 bt.config(relief="sunken" if activo else "raised",
                           bg="#C9D9EC" if activo else "SystemButtonFace")
+        self._pintar_ojo()
+
+    def _pintar_ojo(self):
+        """El boton de ocultar marcas refleja el estado: suelto dice "Ocultar
+        marcas"; apretado (marcas ocultas) queda hundido, de color, y dice
+        "Mostrar marcas". Estado y accion se leen sin depender solo del color."""
+        bt = getattr(self, "btn_ojo", None)
+        if bt is None:
+            return
+        ocultas = not self.ver_marcas
+        bt.config(text=t("ojo_mostrar") if ocultas else t("ojo_ocultar"),
+                  relief="sunken" if ocultas else "raised",
+                  bg="#C9D9EC" if ocultas else "SystemButtonFace")
 
     # ------------------------------------------------------ herramientas ----
 
@@ -980,9 +1097,7 @@ class Visor(ttk.Frame):
             # Antes se podia agarrar y borrar un dibujo invisible.
             self.seleccion = []
             self._refrescar_panel()
-        self.btn_ojo.config(
-            relief="sunken" if self.ver_marcas else "raised",
-            text=t("ojo_marcas") if self.ver_marcas else t("ojo_ocultas"))
+        self._pintar_ojo()
         self.render(self.canvas.yview()[0])
 
     # ------------------------------------------------------------ render ----
@@ -1130,11 +1245,7 @@ class Visor(ttk.Frame):
             if not (0 <= i < len(lista)):
                 continue
             marca = lista[i]
-            r = self._bbox(marca)
-            x0, y0 = self._a_canvas(r.x0, r.y0)
-            x1, y1 = self._a_canvas(r.x1, r.y1)
-            if i in self._cajas_notas:          # la caja tal como se ve en pantalla
-                x0, y0, x1, y1 = self._cajas_notas[i]
+            x0, y0, x1, y1 = self._caja_en_pantalla(marca, i)
             # Un halo azul DETRAS de la marca: hace que lo elegido salte a la
             # vista sin ensuciarlo (antes iba encima y tramaba el texto de la
             # nota). Queda arriba de la hoja y abajo de todas las marcas.
@@ -1146,33 +1257,92 @@ class Visor(ttk.Frame):
             self.canvas.create_rectangle(x0 - 4, y0 - 4, x1 + 4, y1 + 4,
                                          outline="#1971C2", width=2, dash=(4, 3),
                                          tags="seleccion")
-            for (ex, ey) in ((x0 - 4, y0 - 4), (x1 + 4, y0 - 4),
-                             (x0 - 4, y1 + 4), (x1 + 4, y1 + 4)):
-                self.canvas.create_rectangle(ex - 3, ey - 3, ex + 3, ey + 3,
-                                             fill="#1971C2", outline="white",
-                                             tags="seleccion")
-            # Una nota sola elegida: manija en el borde derecho para cambiarle
-            # el ancho (ver _manija_nota). Mientras se arrastra, una linea
-            # punteada muestra el tope elegido; la caja se ajusta al texto.
+            # Manijas SOLO donde hacen algo: en una nota sola elegida. Antes
+            # habia cuadraditos en las esquinas de todo lo elegido que parecian
+            # manijas y no hacian nada. Un dibujo o varias marcas llevan solo el
+            # recuadro: se mueven arrastrando, no se estiran.
             if marca["tipo"] == "texto" and len(self.seleccion) == 1:
-                mx, my = self._manija_nota(marca, i)
-                self.canvas.create_rectangle(mx - 3, my - 9, mx + 3, my + 9,
-                                             fill="white", outline="#1971C2", width=2,
-                                             tags="seleccion")
-                if self._redimensionando is not None and marca.get("ancho"):
-                    gx = self._a_canvas(marca["x"] + marca["ancho"], 0)[0]
+                self._dibujar_manijas(i)
+                guia = (self._redimensionando or {}).get("guia")
+                if guia is not None:
+                    # Mientras se arrastra un costado, una linea punteada marca
+                    # el tope elegido; la caja se ajusta al texto (fit to size).
+                    gx = self._a_canvas(guia, 0)[0]
                     self.canvas.create_line(gx, y0 - 10, gx, y1 + 10, fill="#1971C2",
                                             dash=(3, 3), tags="seleccion")
             # Si lo elegido esta atado a una frase, una flecha marcada apunta
-            # desde la marca HACIA esa frase, para ver de un vistazo a que se
-            # refiere sin leer el panel.
-            ancla = marca.get("ancla")
-            puntos = self._conector(marca, ancla) if ancla else None
+            # desde la marca HACIA esa frase; si se refiere a otra marca, hacia
+            # esa marca. Se ve de un vistazo a que se refiere sin leer el panel.
+            puntos = self._conector(marca, marca.get("ancla")) if marca.get("ancla") else None
+            if puntos is None and marca.get("ref"):
+                otra = self._marca_por_nombre(marca["ref"])
+                if otra is not None and otra is not marca:
+                    puntos = self._conector(marca, {"rects": [tuple(self._bbox(otra))]})
             if puntos:
                 self.canvas.create_line(
                     *puntos, fill="#E8A200",
                     width=max(2, int(round(2.4 * self.zoom))),
                     arrow="last", arrowshape=(12, 15, 5), tags="seleccion")
+
+    def _caja_en_pantalla(self, marca, i):
+        """Recuadro de una marca en el canvas: el de la nota tal como se dibujo,
+        o el del dibujo convertido de puntos PDF."""
+        if i in self._cajas_notas:
+            return self._cajas_notas[i]
+        r = self._bbox(marca)
+        x0, y0 = self._a_canvas(r.x0, r.y0)
+        x1, y1 = self._a_canvas(r.x1, r.y1)
+        return x0, y0, x1, y1
+
+    def _marca_por_nombre(self, nombre):
+        """La marca de la pagina actual que se llama asi (o None)."""
+        for mk in self.marcas.get(self.pno, []):
+            if mk.get("nombre") == nombre:
+                return mk
+        return None
+
+    def _manijas(self, i):
+        """{nombre: (x, y)} de las manijas de la nota i, en el canvas.
+
+        Esquinas (ai, ad, bi, bd) = tamano de letra; costados (izq, der) =
+        ancho. Arriba y abajo no hay: el alto sale solo del texto. Es el
+        modelo de Canva, tldraw y Excalidraw para cajas de texto que se
+        ajustan solas (decision del Disenador, sept-2026).
+        """
+        lista = self.marcas.get(self.pno, [])
+        x0, y0, x1, y1 = self._caja_en_pantalla(lista[i], i)
+        x0, y0, x1, y1 = x0 - 4, y0 - 4, x1 + 4, y1 + 4
+        medio = (y0 + y1) / 2.0
+        return {"ai": (x0, y0), "ad": (x1, y0), "bi": (x0, y1), "bd": (x1, y1),
+                "izq": (x0, medio), "der": (x1, medio)}
+
+    def _dibujar_manijas(self, i):
+        """Cuadraditos blancos con borde azul, como en cualquier editor."""
+        for nombre, (mx, my) in self._manijas(i).items():
+            if nombre in MANIJAS_ESQUINA:
+                caja = (mx - 4, my - 4, mx + 4, my + 4)
+            else:
+                caja = (mx - 3, my - 9, mx + 3, my + 9)
+            self.canvas.create_rectangle(*caja, fill="white", outline="#1971C2",
+                                         width=2, tags="seleccion")
+
+    def _manija_en(self, e):
+        """(indice, nombre) de la manija que esta bajo el mouse, o None.
+
+        Solo hay manijas con una nota sola elegida, en modo Seleccionar.
+        """
+        if self.modo != "seleccionar" or len(self.seleccion) != 1 or self.refiriendo:
+            return None
+        lista = self.marcas.get(self.pno, [])
+        i = self.seleccion[0]
+        if not (0 <= i < len(lista)) or lista[i]["tipo"] != "texto" or not self.ver_marcas:
+            return None
+        cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
+        for nombre, (mx, my) in self._manijas(i).items():
+            alto = 7 if nombre in MANIJAS_ESQUINA else 12
+            if abs(cx - mx) <= 7 and abs(cy - my) <= alto:
+                return i, nombre
+        return None
 
     def _dibujar_marca(self, marca, i):
         tag = "marca%d" % i
@@ -1201,66 +1371,50 @@ class Visor(ttk.Frame):
                         *puntos,
                         fill=a_hex(mezclar(A.COLOR_ANCLA, A.OPACIDAD_ANCLA)),
                         width=max(1, int(1.2 * self.zoom)), tags=("marca", tag))
-            rect = A.rect_nota(marca["x"], marca["y"], marca["texto"], marca.get("ancho"))
+            cuerpo = marca.get("cuerpo")
+            f = A.escala_nota(cuerpo)
+            rect = A.rect_de(marca)
             x0, y0 = self._a_canvas(rect.x0, rect.y0)
             _x1, y1 = self._a_canvas(rect.x1, rect.y1)
             # El texto va renglon por renglon, con el MISMO corte que usa el PDF
             # guardado (A.lineas_nota) y la letra en pixeles (tamano negativo en
             # Tk). Si se dejara que Tk corte solo y con tamano en puntos, Windows
             # agranda la letra y el segundo renglon se sale del recuadro.
-            pad = A.PAD_NOTA * self.zoom
-            fuente = ("Helvetica", -max(6, int(round(A.CUERPO_NOTA * self.zoom))))
+            pad = A.PAD_NOTA * f * self.zoom
+            fuente = ("Helvetica", -max(6, int(round(A.CUERPO_NOTA * f * self.zoom))))
             tag_txt = tag + "txt"
-            for k, linea in enumerate(A.lineas_nota(marca["texto"], marca.get("ancho"))):
+            for k, linea in enumerate(A.lineas_nota(marca["texto"], marca.get("ancho"), cuerpo)):
                 self.canvas.create_text(
-                    x0 + pad, y0 + A.tope_renglon(k) * self.zoom, text=linea,
+                    x0 + pad, y0 + A.tope_renglon(k, cuerpo) * self.zoom, text=linea,
                     anchor="nw", fill=col, font=fuente, tags=("marca", tag, tag_txt))
             # La caja se arma alrededor del texto YA DIBUJADO, no de la medida del
             # PDF: en pantalla la letra sale un poco mas angosta (Windows redondea
             # el tamano) y medida "de libro" quedaba un hueco vacio a la derecha.
             caja = self.canvas.bbox(tag_txt)
-            x1 = max(x0 + A.ANCHO_MIN_NOTA * self.zoom, (caja[2] if caja else x0) + pad)
+            x1 = max(x0 + A.ANCHO_MIN_NOTA * f * self.zoom, (caja[2] if caja else x0) + pad)
             fondo = self.canvas.create_rectangle(x0, y0, x1, y1, fill=a_hex(A.FONDO_NOTA),
                                                  outline=col, width=1, tags=("marca", tag))
             self.canvas.tag_lower(fondo, tag_txt)
             self._cajas_notas[i] = (x0, y0, x1, y1)
 
-    def _manija_nota(self, marca, i=None):
-        """Punto (en el canvas) de la manija que cambia el ancho de una nota."""
-        if i in self._cajas_notas:
-            _x0, y0, x1, y1 = self._cajas_notas[i]
-        else:
-            r = self._bbox(marca)
-            x1, y0 = self._a_canvas(r.x1, r.y0)
-            _x, y1 = self._a_canvas(r.x1, r.y1)
-        return x1 + 4, (y0 + y1) / 2.0
-
-    def _sobre_manija(self, e):
-        """Indice de la nota elegida si el mouse esta sobre su manija, o None."""
-        if self.modo != "seleccionar" or len(self.seleccion) != 1:
-            return None
-        lista = self.marcas.get(self.pno, [])
-        i = self.seleccion[0]
-        if not (0 <= i < len(lista)) or lista[i]["tipo"] != "texto":
-            return None
-        mx, my = self._manija_nota(lista[i], i)
-        cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
-        return i if abs(cx - mx) <= 7 and abs(cy - my) <= 12 else None
-
     def _al_mover_mouse(self, e):
         """Sin apretar nada, el cursor avisa que hay debajo (en Seleccionar).
 
-        Flecha doble sobre la manija de una nota, cruz de mover sobre una marca,
-        cursor de texto sobre el texto del documento. Asi se sabe que va a pasar
-        antes de hacer clic, como en cualquier editor.
+        Flechas de estirar sobre las manijas de una nota (dobles horizontales
+        en los costados, diagonales en las esquinas), cruz de mover sobre una
+        marca, cursor de texto sobre el texto del documento. Asi se sabe que va
+        a pasar antes de hacer clic, como en cualquier editor.
         """
         if self._pan or self._redimensionando is not None or self._rts:
             return
         cursor = "crosshair" if self.refiriendo else CURSORES[self.modo]
         if self.modo == "seleccionar" and not self.refiriendo:
             punto = self._a_pdf(e.x, e.y)
-            if self._sobre_manija(e) is not None:
-                cursor = "sb_h_double_arrow"
+            manija = self._manija_en(e)
+            if manija is not None:
+                cursor = {"ai": "size_nw_se", "bd": "size_nw_se",
+                          "ad": "size_ne_sw", "bi": "size_ne_sw"}.get(
+                              manija[1], "sb_h_double_arrow")
             elif self._marca_en(punto) is not None:
                 cursor = "fleur"
             elif self._palabra_en(punto):
@@ -1319,11 +1473,20 @@ class Visor(ttk.Frame):
                 self._editar_nota_seleccionada()
                 return
             self._abrir_editor(punto)
+            # Si en vez de soltar se arrastra, el arrastre elige el ancho de la
+            # nota, como el cuadro de texto de Acrobat o de Figma (ver
+            # _arrastre_nota). Un clic suelto la deja con el ancho de entrada.
+            if self._editor is not None:
+                self._nota_arrastre = {"desde": punto[0], "movido": False, "id": None}
         elif self.modo == "seleccionar":
             # Ctrl+clic o Shift+clic suman a la seleccion (Shift es lo de Windows).
             self._click_seleccionar(e, sumando=bool(e.state & 0x0005))
         elif self.modo == "borrar":
-            self._borrar_en(self._a_pdf(e.x, e.y))
+            # El borrador borra todo lo que toca mientras se arrastra, como el
+            # de Office; toda la pasada se deshace con un solo Ctrl+Z.
+            punto = self._a_pdf(e.x, e.y)
+            self._borrando = {"ultimo": punto, "algo": False}
+            self._borrar_en(punto)
 
     def _doble_click(self, e):
         """Doble clic en modo seleccionar: editar la nota que este debajo."""
@@ -1340,6 +1503,12 @@ class Visor(ttk.Frame):
     def _arrastre(self, e):
         if self.modo == "seleccionar":
             self._arrastre_seleccionar(e)
+            return
+        if self.modo == "texto" and self._nota_arrastre is not None:
+            self._arrastre_nota(e)
+            return
+        if self.modo == "borrar" and self._borrando is not None:
+            self._arrastre_borrar(e)
             return
         if self.modo != "dibujar" or self._trazo is None:
             return
@@ -1359,6 +1528,14 @@ class Visor(ttk.Frame):
     def _soltar(self, _e):
         if self.modo == "seleccionar":
             self._soltar_seleccionar(_e)
+            return
+        if self.modo == "texto" and self._nota_arrastre is not None:
+            self._soltar_nota(_e)
+            return
+        if self.modo == "borrar" and self._borrando is not None:
+            borrando, self._borrando = self._borrando, None
+            if borrando["algo"]:
+                self._marcar_sucio()
             return
         if self.modo != "dibujar" or self._trazo is None:
             return
@@ -1384,12 +1561,67 @@ class Visor(ttk.Frame):
             self.ancla_pendiente = None
         self._agregar(nueva)
 
+    def _arrastre_nota(self, e):
+        """Modo Texto, arrastrando despues del clic: el ancho de la nota nueva
+        va de donde se apreto hasta el mouse. Un recuadro punteado muestra el
+        ancho elegido; la caja igual se ajusta al texto que se escriba."""
+        d = self._nota_arrastre
+        if self._editor is None:
+            self._nota_arrastre = None
+            return
+        px = self._a_pdf(e.x, e.y)[0]
+        if not d["movido"] and abs(px - d["desde"]) * self.zoom < 8:
+            return          # un temblor del clic no cuenta como arrastre
+        d["movido"] = True
+        hoja = self._pagina().rect
+        izq = max(0.0, min(d["desde"], px))
+        der = min(hoja.width, max(d["desde"], px))
+        ancho = max(A.ANCHO_MIN_NOTA, der - izq)
+        izq = max(0.0, min(izq, hoja.width - ancho))
+        self._editor_ancho = ancho
+        y = self._editor_xy[1]
+        self._editor_xy = (izq, y)
+        cx, cy = self._a_canvas(izq, y)
+        self.canvas.coords(self._editor_win, cx, cy)
+        if d["id"] is not None:
+            self.canvas.delete(d["id"])
+        d["id"] = self.canvas.create_rectangle(
+            cx, cy, self._a_canvas(izq + ancho, y)[0], cy + A.medir_nota("")[1] * self.zoom,
+            outline="#1971C2", dash=(3, 3), tags="guia_nota")
+        self._crecer_editor()
+
+    def _soltar_nota(self, _e):
+        """Fin del clic (o del arrastre) en modo Texto: el cuadro queda abierto
+        para escribir; el recuadro punteado queda a la vista hasta cerrarlo."""
+        self._nota_arrastre = None
+        if self._editor is not None:
+            self._editor.focus_set()
+
+    def _arrastre_borrar(self, e):
+        """Pasada del borrador: borra cada marca que toca el camino del mouse.
+
+        Se revisan puntos intermedios del tramo: con un movimiento rapido el
+        mouse salta varios pixeles entre evento y evento y, sin esto, un trazo
+        fino que quedara en el medio se salvaba.
+        """
+        d = self._borrando
+        p = self._a_pdf(e.x, e.y)
+        x0, y0 = d["ultimo"]
+        pasos = max(1, int(max(abs(p[0] - x0), abs(p[1] - y0)) * self.zoom / 3))
+        for k in range(1, pasos + 1):
+            self._borrar_en((x0 + (p[0] - x0) * k / pasos, y0 + (p[1] - y0) * k / pasos))
+        d["ultimo"] = p
+
     def _pan_inicio(self, e):
         # La "manito": apretar la ruedita del mouse agarra la hoja y la arrastra,
         # como en Acrobat o los editores de imagen. Girar la ruedita sigue siendo
-        # leer; apretarla y mover es mover el papel.
+        # leer; apretarla y mover es mover el papel. Mientras se arrastra, el
+        # cursor es una mano cerrada (antes era una cruz de flechas).
         self._pan = True
-        self.canvas.config(cursor="fleur")
+        try:
+            self.canvas.config(cursor=CURSOR_MANO)
+        except tk.TclError:
+            self.canvas.config(cursor="fleur")
         self.canvas.scan_mark(e.x, e.y)
 
     def _pan_mover(self, e):
@@ -1401,6 +1633,17 @@ class Visor(ttk.Frame):
     def _pan_fin(self, _e):
         self._pan = None
         self._aplicar_cursor()
+
+    def _menu_guardar(self):
+        """La flechita al lado de Guardar: "Guardar como...", debajo del boton."""
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label=t("menu_guardar_como"), accelerator="Ctrl+Shift+S",
+                         command=lambda: self.guardar(como=True))
+        bt = self.btn_guardar
+        try:
+            menu.tk_popup(bt.winfo_rootx(), bt.winfo_rooty() + bt.winfo_height())
+        finally:
+            menu.grab_release()
 
     # ----------------------------------------------- seleccion por area (RTS) --
 
@@ -1485,20 +1728,28 @@ class Visor(ttk.Frame):
                 self.render(self.canvas.yview()[0])
                 self._refrescar_panel()
             if self.marcas[self.pno][i]["tipo"] == "texto" and len(self.seleccion) == 1:
-                menu.add_command(label=t("pnl_editar_texto"),
+                menu.add_command(label=t("pnl_editar_texto"), accelerator="Enter",
                                  command=self._editar_nota_seleccionada)
-            menu.add_command(label=t("pnl_borrar"), command=self._borrar_seleccion)
-            menu.add_command(label=t("pnl_soltar"), command=self._soltar_todo)
+            menu.add_command(label=t("menu_copiar"), accelerator="Ctrl+C", command=self.copiar)
+            menu.add_command(label=t("menu_cortar"), accelerator="Ctrl+X", command=self.cortar)
+            menu.add_command(label=t("pnl_borrar"), accelerator=t("tecla_supr"),
+                             command=self._borrar_seleccion)
+            menu.add_separator()
+            menu.add_command(label=t("pnl_soltar"), accelerator="Esc", command=self._soltar_todo)
         elif self._texto_sel:
-            menu.add_command(label=t("menu_copiar"), command=self.copiar_texto)
+            menu.add_command(label=t("menu_copiar"), accelerator="Ctrl+C",
+                             command=self.copiar_texto)
             menu.add_command(label=t("pnl_comentar"), command=self.comentar_seleccion)
             menu.add_command(label=t("pnl_dibujar_sobre"),
                              command=self.dibujar_sobre_seleccion)
         else:
             menu.add_command(label=t("menu_nota_aca"),
                              command=lambda: self._abrir_editor(punto))
+            if getattr(self.app, "marcas_copiadas", None):
+                menu.add_command(label=t("menu_pegar"), accelerator="Ctrl+V",
+                                 command=lambda: self.pegar(punto))
             if self.marcas.get(self.pno):
-                menu.add_command(label=t("menu_seleccionar_todo"),
+                menu.add_command(label=t("menu_seleccionar_todo"), accelerator="Ctrl+A",
                                  command=self.seleccionar_todo)
         try:
             menu.tk_popup(getattr(e, "x_root", 0), getattr(e, "y_root", 0))
@@ -1576,7 +1827,7 @@ class Visor(ttk.Frame):
     def _bbox(self, marca):
         if marca["tipo"] == "lapiz":
             return A.bbox_trazo(marca["trazos"], marca.get("grosor", GROSOR_FINO))
-        return A.rect_nota(marca["x"], marca["y"], marca["texto"], marca.get("ancho"))
+        return A.rect_de(marca)
 
     def _borrar_en(self, punto):
         # Misma prueba que para elegir: se borra lo que esta bajo el mouse, y un
@@ -1584,11 +1835,18 @@ class Visor(ttk.Frame):
         i = self._marca_en(punto)
         if i is None:
             return
-        self._instantanea()
+        # Una sola instantanea por pasada del borrador: Ctrl+Z devuelve todo lo
+        # que borro esa pasada junto, no de a una marca.
+        pasada = self._borrando
+        if pasada is None or not pasada["algo"]:
+            self._instantanea()
+            if pasada is not None:
+                pasada["algo"] = True
         self.marcas[self.pno].pop(i)
         self._limpiar_seleccion()
         self.render(self.canvas.yview()[0])
-        self._marcar_sucio()
+        if pasada is None:
+            self._marcar_sucio()
 
     def _volver_a(self, pila, otra):
         """Motor comun de deshacer y rehacer: saca de una pila y apila en la otra."""
@@ -1659,11 +1917,11 @@ class Visor(ttk.Frame):
 
     def _click_seleccionar(self, e, sumando=False):
         punto = self._a_pdf(e.x, e.y)
-        # La manija de ancho va primero: esta pegada al borde de la nota y, si
-        # no, el clic se tomaria como "agarrar la nota para moverla".
-        manija = None if (sumando or self.refiriendo) else self._sobre_manija(e)
+        # Las manijas van primero: estan pegadas al borde de la nota y, si no,
+        # el clic se tomaria como "agarrar la nota para moverla".
+        manija = None if sumando else self._manija_en(e)
         if manija is not None:
-            self._redimensionando = {"i": manija, "movido": False}
+            self._empezar_manija(*manija)
             return
         i = self._marca_en(punto)
         if self.refiriendo:
@@ -1711,7 +1969,7 @@ class Visor(ttk.Frame):
     def _arrastre_seleccionar(self, e):
         punto = self._a_pdf(e.x, e.y)
         if self._redimensionando is not None:
-            self._cambiar_ancho_nota(punto[0])
+            self._redimensionar(punto)
             return
         if self._arrastrando is not None and self.seleccion:
             if not self._arrastrando["movido"]:
@@ -1729,9 +1987,12 @@ class Visor(ttk.Frame):
 
     def _soltar_seleccionar(self, _e):
         if self._redimensionando is not None:
-            movido = self._redimensionando["movido"]
+            datos = self._redimensionando
             self._redimensionando = None
-            if movido:
+            if datos["movido"]:
+                lista = self.marcas.get(self.pno, [])
+                if 0 <= datos["i"] < len(lista):
+                    self._encajar_nota(lista[datos["i"]])   # que no quede fuera de la hoja
                 self._marcar_sucio()
             self.render(self.canvas.yview()[0])
             self._refrescar_panel()
@@ -1749,27 +2010,82 @@ class Visor(ttk.Frame):
         self._marco_sel = None
         self._refrescar_panel()
 
-    def _cambiar_ancho_nota(self, x_pdf):
-        """Arrastrando la manija: el borde derecho de la nota va hasta x_pdf.
+    def _empezar_manija(self, i, cual):
+        """Clic sobre una manija: se anota como estaba la nota al empezar.
 
-        Lo que se guarda es el TOPE del ancho (clave "ancho"): la caja sigue
-        ajustada al texto, asi que ensanchar "desenrolla" renglones hasta que la
-        nota entra en uno solo, y angostar la parte en mas renglones. Nunca se
-        sale de la hoja.
+        Todo el arrastre se calcula contra ese estado inicial (y no paso a
+        paso), asi la nota no "deriva" por redondeos y volver el mouse al
+        punto de partida la deja exactamente como estaba.
+        """
+        mk = self.marcas[self.pno][i]
+        r = self._bbox(mk)
+        self._redimensionando = {
+            "i": i, "cual": cual, "movido": False, "guia": None,
+            "ini": {"x": mk["x"], "y": mk["y"], "w": r.width, "h": r.height,
+                    "ancho": mk.get("ancho"), "cuerpo": mk.get("cuerpo")}}
+
+    def _redimensionar(self, punto):
+        """Arrastrando una manija de la nota elegida (punto en puntos PDF).
+
+        Costados = ANCHO. Lo que se guarda es el TOPE del ancho (clave
+        "ancho"): la caja sigue ajustada al texto, asi que ensanchar
+        "desenrolla" renglones hasta que la nota entra en uno solo, y angostar
+        la parte en mas renglones. El costado de enfrente queda quieto. Nunca
+        se sale de la hoja.
+
+        Esquinas = TAMANO DE LETRA. La nota entera crece o se achica en la
+        misma proporcion (letra, margen y tope de ancho), con la esquina de
+        enfrente quieta: los renglones se cortan igual, solo que mas grandes.
         """
         datos = self._redimensionando
         lista = self.marcas.get(self.pno, [])
         if not (0 <= datos["i"] < len(lista)):
             return
         mk = lista[datos["i"]]
-        tope_hoja = max(A.ANCHO_MIN_NOTA, self._pagina().rect.width - mk["x"])
-        ancho = min(max(A.ANCHO_MIN_NOTA, x_pdf - mk["x"]), tope_hoja)
-        if abs(ancho - (mk.get("ancho") or 0)) < 0.5:
+        ini, cual = datos["ini"], datos["cual"]
+        hoja = self._pagina().rect
+        if cual in MANIJAS_COSTADO:
+            minimo = A.ANCHO_MIN_NOTA * A.escala_nota(ini["cuerpo"])
+            if cual == "der":
+                tope = min(max(minimo, punto[0] - ini["x"]), max(minimo, hoja.width - ini["x"]))
+                nuevo = {"ancho": tope, "x": ini["x"]}
+                datos["guia"] = ini["x"] + tope
+            else:
+                derecha = ini["x"] + ini["w"]
+                tope = min(max(minimo, derecha - punto[0]), max(minimo, derecha))
+                ancho_caja = A.medir_nota(mk["texto"], tope, ini["cuerpo"])[0]
+                nuevo = {"ancho": tope, "x": derecha - ancho_caja}
+                datos["guia"] = derecha - tope
+        else:
+            # Proporcion = cuanto se alejo el mouse de la esquina quieta, medido
+            # sobre la diagonal de la caja (como Canva: se puede tirar en
+            # cualquier direccion y crece parejo).
+            sx = -1.0 if cual[1] == "i" else 1.0
+            sy = -1.0 if cual[0] == "a" else 1.0
+            fx = ini["x"] + (ini["w"] if sx < 0 else 0.0)
+            fy = ini["y"] + (ini["h"] if sy < 0 else 0.0)
+            dx, dy = ini["w"] * sx, ini["h"] * sy
+            prop = ((punto[0] - fx) * dx + (punto[1] - fy) * dy) / max(1e-6, dx * dx + dy * dy)
+            antes = ini["cuerpo"] or A.CUERPO_NOTA
+            cuerpo = min(max(A.CUERPO_MIN, antes * prop), A.CUERPO_MAX)
+            prop = cuerpo / antes
+            nuevo = {"cuerpo": cuerpo}
+            if ini["ancho"]:
+                nuevo["ancho"] = ini["ancho"] * prop
+            w, h = A.medir_nota(mk["texto"], nuevo.get("ancho"), cuerpo)
+            nuevo["x"] = fx - w if sx < 0 else fx
+            nuevo["y"] = fy - h if sy < 0 else fy
+            datos["guia"] = None
+        if all(abs((mk.get(k) or 0.0) - v) < 0.05 for k, v in nuevo.items()):
             return
         if not datos["movido"]:
             self._instantanea()             # una sola instantanea por arrastre
             datos["movido"] = True
-        mk["ancho"] = ancho
+        mk.update(nuevo)
+        # Una nota que vuelve a la letra de entrada queda como una nota comun,
+        # sin la clave de mas (asi "sin guardar" se apaga si se deshace a mano).
+        if abs(mk.get("cuerpo", A.CUERPO_NOTA) - A.CUERPO_NOTA) < 0.05:
+            mk.pop("cuerpo", None)
         self.render(self.canvas.yview()[0])
 
     def empujar_seleccion(self, dx, dy):
@@ -1805,8 +2121,26 @@ class Visor(ttk.Frame):
         except Exception:
             return 96.0
 
+    def letra_normal(self):
+        """Boton del panel: la nota vuelve al tamano de letra de entrada."""
+        marcas = [m for m in self._marcas_seleccionadas()
+                  if m["tipo"] == "texto" and m.get("cuerpo")]
+        if not marcas:
+            return
+        self._instantanea()
+        for mk in marcas:
+            # El tope de ancho elegido se achica o agranda en la misma
+            # proporcion: la nota vuelve a tener los mismos renglones.
+            if mk.get("ancho"):
+                mk["ancho"] = mk["ancho"] / A.escala_nota(mk["cuerpo"])
+            mk.pop("cuerpo", None)
+            self._encajar_nota(mk)
+        self.render(self.canvas.yview()[0])
+        self._marcar_sucio()
+        self._refrescar_panel()
+
     def ancho_automatico(self):
-        """Boton del panel: la nota vuelve al ancho de siempre (tope ANCHO_NOTA)."""
+        """Boton del panel: la nota vuelve al ancho de siempre (el de entrada)."""
         marcas = [m for m in self._marcas_seleccionadas()
                   if m["tipo"] == "texto" and m.get("ancho")]
         if not marcas:
@@ -1986,13 +2320,93 @@ class Visor(ttk.Frame):
         self._refrescar_panel()
 
     def copiar_texto(self):
-        """Ctrl+C: manda al portapapeles el texto del documento seleccionado."""
+        """Manda al portapapeles el texto del documento seleccionado."""
         if not self._texto_sel:
             return
         self.app.clipboard_clear()
         self.app.clipboard_append(self._texto_sel)
         self.app.update()
+        # Lo ultimo que se copio es lo que se pega: si despues de copiar marcas
+        # se copia texto, Ctrl+V ya no pega aquellas marcas.
+        self.app.marcas_copiadas = None
         self.pie.config(text=t("pie_copiado") % len(self._texto_sel))
+
+    # --- copiar, cortar y pegar marcas (Ctrl+C / Ctrl+X / Ctrl+V) ---------
+
+    def copiar(self):
+        """Ctrl+C: con marcas elegidas, las copia; si no, copia el texto del PDF
+        elegido. Como en cualquier editor, copia lo que esta seleccionado."""
+        import copy
+        marcas = self._marcas_seleccionadas()
+        if not marcas:
+            self.copiar_texto()
+            return False
+        # Las marcas copiadas viven en el programa (no en el portapapeles de
+        # Windows): sirven para pegarlas en otra pagina u otro PDF.
+        self.app.marcas_copiadas = {"marcas": copy.deepcopy(marcas), "ruta": self.ruta,
+                                    "pno": self.pno, "veces": 0}
+        self.pie.config(text=t("pie_copiadas") % len(marcas))
+        return True
+
+    def cortar(self):
+        """Ctrl+X: copiar las marcas elegidas y sacarlas de la hoja."""
+        if self._marcas_seleccionadas() and self.copiar():
+            self._borrar_seleccion()
+
+    def pegar(self, punto=None):
+        """Ctrl+V: pega las marcas copiadas y las deja elegidas.
+
+        En la misma pagina, la copia cae corrida un poco (y cada pegado un poco
+        mas), para que no quede escondida justo encima de la original. En otra
+        pagina cae en el mismo lugar. Con 'punto' (menu del clic derecho,
+        "Pegar aca"), cae donde se hizo el clic. Nunca queda fuera de la hoja.
+        """
+        import copy
+        clip = getattr(self.app, "marcas_copiadas", None)
+        if not clip or not clip["marcas"]:
+            return
+        self._cerrar_editor(confirmar=True)
+        nuevas = copy.deepcopy(clip["marcas"])
+        mismo_doc = A.misma_ruta(clip["ruta"], self.ruta)
+        misma_pagina = mismo_doc and clip["pno"] == self.pno
+        for mk in nuevas:
+            mk.pop("nombre", None)          # la copia recibe su propio nombre al guardar
+            if not misma_pagina:
+                mk.pop("ancla", None)       # la frase atada es de la otra pagina
+            if not mismo_doc:
+                mk.pop("ref", None)         # y la marca referida, de otro PDF
+        cajas = [self._bbox(mk) for mk in nuevas]
+        x0, y0 = min(r.x0 for r in cajas), min(r.y0 for r in cajas)
+        x1, y1 = max(r.x1 for r in cajas), max(r.y1 for r in cajas)
+        if punto is not None:
+            dx, dy = punto[0] - x0, punto[1] - y0
+        elif misma_pagina:
+            clip["veces"] += 1
+            dx = dy = 12.0 * clip["veces"]
+        else:
+            dx = dy = 0.0
+        hoja = self._pagina().rect
+        dx = max(min(dx, hoja.width - x1), -x0)
+        dy = max(min(dy, hoja.height - y1), -y0)
+        for mk in nuevas:
+            if mk["tipo"] == "lapiz":
+                mk["trazos"] = [[(x + dx, y + dy) for (x, y) in tr] for tr in mk["trazos"]]
+            else:
+                mk["x"] += dx
+                mk["y"] += dy
+        if self.modo != "seleccionar":
+            self.set_modo("seleccionar")
+        self._instantanea()
+        lista = self.marcas.setdefault(self.pno, [])
+        inicio = len(lista)
+        lista.extend(nuevas)
+        self.seleccion = list(range(inicio, len(lista)))
+        self.palabras_sel = []
+        self._texto_sel = ""
+        self.render(self.canvas.yview()[0])
+        self._marcar_sucio()
+        self._refrescar_panel()
+        self.pie.config(text=t("pie_pegadas") % len(nuevas))
 
     # --- acciones del panel -----------------------------------------------
 
@@ -2123,6 +2537,8 @@ class Visor(ttk.Frame):
         self._editor_original = original
         self._editor_color = original[1]["color"] if original else self.color
         self._editor_ancho = original[1].get("ancho") if original else None
+        self._editor_cuerpo = original[1].get("cuerpo") if original else None
+        f = A.escala_nota(self._editor_cuerpo)
         # La frase que estaba esperando (Comentar esta frase) se toma ACA, al
         # abrir el cuadro: si despues la nota queda vacia, la frase no queda
         # viva para pegarse a la marca siguiente.
@@ -2151,13 +2567,13 @@ class Visor(ttk.Frame):
         # El cuadro de escribir se ve IGUAL que la nota terminada: misma letra
         # (en pixeles, tamano negativo), mismo margen interno y mismo alto de
         # renglon. Y es fit to size mientras se escribe (ver _crecer_editor).
-        cuerpo = max(6, int(round(A.CUERPO_NOTA * self.zoom)))
+        cuerpo = max(6, int(round(A.CUERPO_NOTA * f * self.zoom)))
         fuente = tkfont.Font(family="Helvetica", size=-cuerpo)
         self._editor_fuente = fuente
-        pad = max(2, int(round(A.PAD_NOTA * self.zoom)))
+        pad = max(2, int(round(A.PAD_NOTA * f * self.zoom)))
         # Medio "aire" arriba y medio abajo de cada renglon: asi cada linea mide
         # ALTO_LINEA, igual que en A.tope_renglon.
-        aire = max(0, int(round(A.ALTO_LINEA * self.zoom)) - fuente.metrics("linespace"))
+        aire = max(0, int(round(A.ALTO_LINEA * f * self.zoom)) - fuente.metrics("linespace"))
         self._editor = tk.Text(self.canvas, wrap="word", height=1, undo=True,
                                font=fuente, bg=a_hex(A.FONDO_NOTA),
                                fg=a_hex(self._editor_color), relief="solid", bd=1,
@@ -2165,7 +2581,7 @@ class Visor(ttk.Frame):
                                spacing1=aire // 2, spacing3=aire - aire // 2,
                                insertbackground=a_hex(self._editor_color))
         self._editor_win = self.canvas.create_window(cx, cy, anchor="nw", window=self._editor,
-                                                     width=A.ANCHO_MIN_NOTA * self.zoom)
+                                                     width=A.ANCHO_MIN_NOTA * f * self.zoom)
         if texto:
             self._editor.insert("1.0", texto)
         self._editor.focus_set()
@@ -2184,12 +2600,12 @@ class Visor(ttk.Frame):
         if self._editor is None:
             return
         texto = self._editor.get("1.0", "end-1c")
-        lineas = A.lineas_nota(texto, self._editor_ancho)
+        lineas = A.lineas_nota(texto, self._editor_ancho, self._editor_cuerpo)
         # Ancho = el renglon mas ancho TAL COMO LO DIBUJA la pantalla (misma
         # razon que en _dibujar_marca: medido "de libro" quedaba aire a la
         # derecha), mas los margenes, el borde y lugar para el cursor.
         mas_ancho = max([self._editor_fuente.measure(l) for l in lineas] + [0])
-        minimo = A.ANCHO_MIN_NOTA * self.zoom
+        minimo = A.ANCHO_MIN_NOTA * A.escala_nota(self._editor_cuerpo) * self.zoom
         pad = int(self._editor.cget("padx"))
         self.canvas.itemconfigure(self._editor_win,
                                   width=max(minimo, mas_ancho + 2 * pad + 2 + 4))
@@ -2201,8 +2617,10 @@ class Visor(ttk.Frame):
         texto = self._editor.get("1.0", "end-1c") if confirmar else ""
         ed, win, xy = self._editor, self._editor_win, self._editor_xy
         self._editor = self._editor_win = self._editor_xy = None
+        self._nota_arrastre = None
         try:
             self.canvas.delete(win)
+            self.canvas.delete("guia_nota")
             ed.destroy()
         except Exception:
             pass
@@ -2236,6 +2654,8 @@ class Visor(ttk.Frame):
                      "nombre": self._editor_nombre or ""}
             if self._editor_ancla:
                 nueva["ancla"] = self._editor_ancla
+            if self._editor_ancho:
+                nueva["ancho"] = self._editor_ancho     # elegido arrastrando al crearla
             self._encajar_nota(nueva)
             self._agregar(nueva)
         self._editor_nombre = ""
@@ -2303,15 +2723,32 @@ class Visor(ttk.Frame):
         return sum(len(v) for v in self.marcas.values())
 
     def _actualizar_pie(self):
+        """La barra de abajo en reposo: vacia (ver _construir_widgets), salvo
+        que haya un paso a medio hacer, que se sigue indicando aunque se
+        cambie el zoom o la vista. Mientras se escribe una nota, conserva la
+        indicacion de la nota."""
         if self._editor is not None:
             return
-        self.pie.config(text=t("pie_marcas")
-                             % (self.cuenta_marcas(),
-                                t("pie_sin_guardar") if self.sucio else ""))
+        if self.refiriendo:
+            texto = t("pie_elegir_ref")
+        elif self.ancla_pendiente:
+            texto = t("pie_comentar" if self.modo == "texto" else "pie_dibujar") \
+                % self.ancla_pendiente.get("cita", "")[:80]
+        else:
+            texto = ""
+        self.pie.config(text=texto)
 
     # ------------------------------------------------------------ guardar ----
 
-    def guardar(self):
+    def guardar(self, como=False):
+        """Guardar (Ctrl+S) o, con como=True, "Guardar como..." (Ctrl+Shift+S).
+
+        Como en los editores (decision 7): la primera vez pregunta el nombre de
+        la copia; despues Guardar escribe encima de esa misma copia sin
+        preguntar y solo avisa abajo. El cartel grande con el mensaje para el
+        chat sale cuando se elige un nombre (la primera vez o con "Guardar
+        como..."). El PDF original nunca se toca.
+        """
         self.dialogo_guardado = None
         self._cerrar_editor(confirmar=True)
         if self.cuenta_marcas() == 0:
@@ -2319,17 +2756,21 @@ class Visor(ttk.Frame):
                                        t("dlg_sin_marcas_cuerpo"),
                                        parent=self):
                 return
-        carpeta = os.path.dirname(self.ruta)
-        base = os.path.splitext(os.path.basename(self.ruta))[0]
-        if base.endswith("-devolucion"):
-            base = base[:-len("-devolucion")]
-        sugerida = ruta_libre(carpeta, base)
-        destino = filedialog.asksaveasfilename(
-            parent=self, title=t("dlg_guardar_titulo"),
-            initialdir=carpeta, initialfile=os.path.basename(sugerida),
-            defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
-        if not destino:
-            return
+        preguntar = como or not self.ruta_guardado
+        if preguntar:
+            carpeta = os.path.dirname(self.ruta_guardado or self.ruta)
+            base = os.path.splitext(os.path.basename(self.ruta))[0]
+            if base.endswith("-devolucion"):
+                base = base[:-len("-devolucion")]
+            sugerida = ruta_libre(carpeta, base)
+            destino = filedialog.asksaveasfilename(
+                parent=self, title=t("dlg_guardar_titulo"),
+                initialdir=carpeta, initialfile=os.path.basename(sugerida),
+                defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
+            if not destino:
+                return
+        else:
+            destino = self.ruta_guardado
 
         # Guardar encima del PDF que se esta mirando: Windows no deja reemplazar
         # un archivo abierto, asi que hay que soltarlo y volver a tomarlo. Pasa
@@ -2371,15 +2812,18 @@ class Visor(ttk.Frame):
                     pass
 
         self.firma_guardada = self._firma()
+        self.ruta_guardado = destino
         self.app.actualizar_titulo()
-        self._actualizar_pie()
         # Se copia el mensaje ENTERO, no solo la ruta: asi el usuario pega una vez en
         # el chat y el agente ya sabe que es una devolucion y con que leerla, sin
         # tener que explicarle nada ni acordarse del comando.
         self.app.clipboard_clear()
         self.app.clipboard_append(mensaje_para_el_chat(destino))
         self.app.update()           # dejar el portapapeles firme en Windows
-        self.dialogo_guardado = DialogoGuardado(self.app, destino)
+        if preguntar:
+            self.dialogo_guardado = DialogoGuardado(self.app, destino)
+        else:
+            self.pie.config(text=t("pie_guardado") % os.path.basename(destino))
 
     def _ocupado(self, si):
         """Cursor de espera mientras se guarda: un PDF grande tarda unos
@@ -2392,6 +2836,7 @@ class Visor(ttk.Frame):
                 self.app.update_idletasks()
             else:
                 self._aplicar_cursor()
+                self._actualizar_pie()      # que no quede "Guardando..." colgado
         except Exception:
             pass
 
@@ -2510,11 +2955,20 @@ class App(tk.Tk):
         self.visor = None
         self.mostrar_biblioteca()
 
+        # Marcas copiadas con Ctrl+C, para pegarlas con Ctrl+V (en otra pagina o
+        # en otro PDF). Viven en el programa y no en el portapapeles de Windows.
+        self.marcas_copiadas = None
+
         self.bind("<Key>", self._tecla)
         # Ctrl+S guarda aunque se este escribiendo una nota (guardar la cierra
-        # primero): es lo que se espera en cualquier programa.
+        # primero): es lo que se espera en cualquier programa. Ctrl+Shift+S es
+        # "Guardar como..." (Tk ve la S mayuscula con Shift, y con Bloq Mayus la
+        # ve mayuscula sin Shift: por eso los cuatro).
         for combo in ("<Control-s>", "<Control-S>"):
-            self.bind(combo, lambda e: self.visor and self.visor.guardar())
+            self.bind(combo, lambda e: (self.visor and self.visor.guardar(), "break")[1])
+        for combo in ("<Control-Shift-S>", "<Control-Shift-s>"):
+            self.bind(combo, lambda e: (self.visor and self.visor.guardar(como=True),
+                                        "break")[1])
         # F3 / Shift+F3: siguiente y anterior de la ultima busqueda.
         self.bind("<F3>", lambda e: (self.visor and self.visor.buscar(1), "break")[1])
         self.bind("<Shift-F3>", lambda e: (self.visor and self.visor.buscar(-1), "break")[1])
@@ -2530,7 +2984,11 @@ class App(tk.Tk):
             "<Control-y>": lambda v: v.rehacer(),
             "<Control-Shift-Z>": lambda v: v.rehacer(),
             "<Control-Shift-z>": lambda v: v.rehacer(),
-            "<Control-c>": lambda v: v.copiar_texto(),
+            # Copiar, cortar y pegar: las marcas elegidas o, si no hay, el
+            # texto del PDF elegido (Ctrl+C).
+            "<Control-c>": lambda v: v.copiar(),
+            "<Control-x>": lambda v: v.cortar(),
+            "<Control-v>": lambda v: v.pegar(),
             "<Control-a>": lambda v: v.seleccionar_todo(),
             # Zoom con los atajos de Acrobat/Edge: Ctrl+0 hoja entera, Ctrl+1
             # tamano real, Ctrl+2 ancho, Ctrl+ +/- acercar y alejar.
@@ -2550,7 +3008,9 @@ class App(tk.Tk):
             # rehacer: es una combinacion mas especifica y gana.)
             "<Control-Z>": lambda v: v.deshacer(),
             "<Control-Y>": lambda v: v.rehacer(),
-            "<Control-C>": lambda v: v.copiar_texto(),
+            "<Control-C>": lambda v: v.copiar(),
+            "<Control-X>": lambda v: v.cortar(),
+            "<Control-V>": lambda v: v.pegar(),
             "<Control-A>": lambda v: v.seleccionar_todo(),
             "<Control-F>": lambda v: v.abrir_busqueda(),
         }
@@ -2562,6 +3022,10 @@ class App(tk.Tk):
         for combo in ("<Control-w>", "<Control-W>"):
             self.bind(combo, lambda e: (self.volver_biblioteca(), "break")[1])
         self.bind("<F1>", lambda e: (self.mostrar_ayuda(), "break")[1])
+        # F5: volver a leer la carpeta, como en el Explorador de Windows.
+        self.bind("<F5>", lambda e: (self.visor is None and self.biblioteca is not None
+                                     and self.biblioteca.refrescar(
+                                         self.biblioteca._ruta_elegida()), "break")[1])
         self.protocol("WM_DELETE_WINDOW", self.cerrar)
 
     def _escribiendo(self):
@@ -2595,6 +3059,10 @@ class App(tk.Tk):
             return
         if self.visor is not None and not self._confirmar_descartar():
             return
+        # La carpeta de ese PDF pasa a ser la de la lista, y queda recordada:
+        # "< Carpeta" vuelve ahi, y la proxima vez el programa abre ahi.
+        if self.biblioteca is not None:
+            self.biblioteca.cambiar_carpeta(os.path.dirname(ruta), seleccionar=ruta)
         self.abrir_pdf(ruta)
 
     def mostrar_ayuda(self):
@@ -2744,12 +3212,21 @@ class App(tk.Tk):
                 return          # idem si el foco esta en el numero de pagina
         except Exception:
             pass
-        # Las combinaciones con Ctrl o Alt tienen su propio atajo (o ninguno):
-        # sin esto, Ctrl+D o Ctrl+T cambiaban de herramienta sin querer.
-        if e.state & (0x0004 | 0x20000):
-            return
         k = e.keysym.lower()
-        if k == "t" and v.modo == "seleccionar" and v.comentar_seleccion():
+        # La letra subrayada de cada herramienta la elige (decision 9): sola o
+        # con Alt, como las letras subrayadas de Windows. Sale del nombre en el
+        # idioma activo (en ingles, Erase = E).
+        letras = {atajo_de(m): m for m in HERRAMIENTAS}
+        # Las demas combinaciones con Ctrl o Alt tienen su propio atajo (o
+        # ninguno): sin esto, Ctrl+D o Ctrl+T cambiaban de herramienta sin querer.
+        if e.state & 0x0004:
+            return
+        if e.state & 0x20000:
+            if k in letras:
+                v.set_modo(letras[k])
+                return "break"
+            return
+        if k == atajo_de("texto") and v.modo == "seleccionar" and v.comentar_seleccion():
             return          # habia texto elegido: la nota quedo atada a esa frase
         # Con marcas elegidas, las flechas las mueven (como en cualquier
         # editor); Shift las mueve de a 10 pt. Sin nada elegido, pasan de pagina.
@@ -2758,12 +3235,15 @@ class App(tk.Tk):
         if k in flechas and v.seleccion:
             v.empujar_seleccion(*flechas[k])
             return
-        if k in ("d", "t", "b", "s"):
-            v.set_modo({"d": "dibujar", "t": "texto",
-                        "s": "seleccionar", "b": "borrar"}[k])
+        if k in letras:
+            v.set_modo(letras[k])
+        elif k in ("return", "kp_enter"):
+            # Enter con una nota elegida: editarla (como Figma o tldraw).
+            v._editar_nota_seleccionada()
         elif k in ("delete", "backspace"):
             v._borrar_seleccion()
-        elif k in ("next", "space"):
+        # La barra espaciadora no hace nada (decision 8).
+        elif k == "next":
             v.ir_pagina(v.pno + 1)
         elif k == "prior":
             v.ir_pagina(v.pno - 1)
@@ -2797,6 +3277,12 @@ def main():
     # por main(), corre siempre en espanol, que es lo que sus comprobaciones
     # esperan. Ver idiomas.py, decision 1.
     idiomas.cargar_idioma_guardado()
+    # Igual con la carpeta: recien aca se lee la ultima que se uso y se
+    # habilita recordar la proxima. El autotest no pasa por aca, asi que nunca
+    # pisa la carpeta que dejo elegida el usuario.
+    global CARPETA_INICIAL, RECORDAR_CARPETA
+    CARPETA_INICIAL = carpeta_recordada() or CARPETA_INICIAL
+    RECORDAR_CARPETA = True
     if _ERROR_IMPORT is not None:
         # Ojo: en esta maquina hay mas de un Python instalado y solo uno tiene
         # las librerias. Por eso el mensaje dice CUAL se esta usando: casi

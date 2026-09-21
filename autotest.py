@@ -649,6 +649,12 @@ def main():
     lector.filedialog.asksaveasfilename = lambda **kw: destino_ancla
     v.guardar()
     app.update()
+    # La primera vez sale el cartel con el mensaje para el chat. Es modal (se
+    # queda con el mouse): se cierra como lo cerraria una persona, con "Listo".
+    check(v.dialogo_guardado is not None, "la primera vez aparece el cartel de guardado")
+    if v.dialogo_guardado is not None:
+        v.dialogo_guardado.destroy()
+        app.update()
     d = pymupdf.open(destino_ancla)
     recargadas = A.cargar(d)
     d.close()
@@ -883,8 +889,8 @@ def main():
     v.render()
     app.update()
     v.firma_guardada = v._firma()
-    v._redimensionando = {"i": i, "movido": False}
-    v._cambiar_ancho_nota(v._pagina().rect.width)
+    v._empezar_manija(i, "der")
+    v._redimensionar((v._pagina().rect.width, mk["y"]))
     v._soltar_seleccionar(None)
     app.update()
     mk = v.marcas[0][i]
@@ -957,6 +963,230 @@ def main():
     check('python.exe"' in msg.lower(), "el comando usa la ruta completa de python.exe",
           msg[-160:])
 
+    print("\n== 8af. Barra estandar: Seleccionar primero y la letra subrayada ==")
+    empezar_limpio()
+    check(list(v.btn_modo) == ["seleccionar", "dibujar", "texto", "borrar"],
+          "Seleccionar es la primera herramienta", str(list(v.btn_modo)))
+    xs = [v.btn_modo[m].winfo_x() for m in ("seleccionar", "dibujar", "texto", "borrar")]
+    check(xs == sorted(xs), "y asi se ven de izquierda a derecha", str(xs))
+    check(all(int(b.cget("underline")) == 0 for b in v.btn_modo.values()),
+          "cada herramienta tiene subrayada la primera letra")
+    for letra, modo in (("d", "dibujar"), ("t", "texto"), ("b", "borrar"), ("s", "seleccionar")):
+        app._tecla(Tecla(letra))
+        check(v.modo == modo, "la letra %s elige %s" % (letra.upper(), modo))
+    app._tecla(Tecla("d", state=0x20000))
+    check(v.modo == "dibujar", "Alt + la letra subrayada tambien elige la herramienta")
+    v.set_modo("seleccionar")
+    lector.idiomas.set_idioma("en", persistir=False)
+    check(lector.atajo_de("borrar") == "e", "en ingles, Erase se elige con la E")
+    lector.idiomas.set_idioma("es", persistir=False)
+    pagina = v.pno
+    app._tecla(Tecla("space"))
+    check(v.pno == pagina, "la barra espaciadora no hace nada (ni pasa de pagina)")
+
+    print("\n== 8ag. Ocultar marcas: arriba, con estado y accion a la vista ==")
+    empezar_limpio()
+    check(v.btn_ojo.master is v.barra, "el boton esta en la barra de arriba")
+    check(v.btn_ojo.cget("text") == "Ocultar marcas" and v.btn_ojo.cget("relief") == "raised",
+          "suelto dice \"Ocultar marcas\"", v.btn_ojo.cget("text"))
+    v.toggle_ver_marcas()
+    check(v.btn_ojo.cget("text") == "Mostrar marcas" and v.btn_ojo.cget("relief") == "sunken",
+          "apretado queda hundido y dice \"Mostrar marcas\"", v.btn_ojo.cget("text"))
+    v.toggle_ver_marcas()
+    check(v.ver_marcas and v.btn_ojo.cget("text") == "Ocultar marcas", "y vuelve a soltarse")
+
+    print("\n== 8ah. La barra de abajo no dice nada en reposo ==")
+    v.set_modo("dibujar")
+    trazo(150, 250)
+    v.set_modo("seleccionar")
+    v.render()
+    app.update()
+    check(v.pie.cget("text") == "", "sin \"N marca(s)\" ni \"sin guardar\" (lo dice el titulo)",
+          repr(v.pie.cget("text")))
+    check(app.title().startswith("* "), "el asterisco del titulo avisa que falta guardar",
+          app.title())
+
+    print("\n== 8ai. Manijas de la nota: costados = ancho, esquinas = letra ==")
+    empezar_limpio()
+    v.set_modo("texto")
+    v._click(a_evento(20, 300))
+    app.update()
+    v._editor.insert("1.0", "una nota de prueba con varias palabras para partir")
+    v._cerrar_editor(confirmar=True)
+    app.update()
+    mk = v.marcas[0][0]
+    v.set_modo("seleccionar")
+    v.seleccion = [0]
+    v.render()
+    app.update()
+    check(sorted(v._manijas(0)) == sorted(["ai", "ad", "bi", "bd", "izq", "der"]),
+          "una nota elegida tiene 4 esquinas y 2 costados (arriba y abajo no)")
+    antes_r = v._bbox(mk)
+    lineas_antes = A.lineas_nota(mk["texto"], mk.get("ancho"), mk.get("cuerpo"))
+    v._empezar_manija(0, "bd")
+    v._redimensionar((antes_r.x0 + 2 * antes_r.width, antes_r.y0 + 2 * antes_r.height))
+    v._soltar_seleccionar(None)
+    despues_r = v._bbox(mk)
+    check(abs((mk.get("cuerpo") or 0) - 2 * A.CUERPO_NOTA) < 0.3,
+          "tirar de una esquina al doble agranda la letra al doble",
+          "cuerpo=%s" % mk.get("cuerpo"))
+    check(A.lineas_nota(mk["texto"], mk.get("ancho"), mk.get("cuerpo")) == lineas_antes,
+          "sin cambiar como se parten los renglones")
+    check(abs(despues_r.x0 - antes_r.x0) < 0.5 and abs(despues_r.y0 - antes_r.y0) < 0.5,
+          "y la esquina de enfrente queda quieta")
+    v.deshacer()
+    mk = v.marcas[0][0]
+    check(not mk.get("cuerpo"), "Ctrl+Z la devuelve a su letra")
+    # Lo mismo, pero con eventos de mouse de verdad sobre la ventana: prueba que
+    # la manija se encuentra donde se dibuja y que los bind() la atienden.
+    v.seleccion = [0]
+    v.render()
+    app.update()
+    mx, my = v._manijas(0)["bd"]
+    ex_, ey_ = int(mx - c.canvasx(0)), int(my - c.canvasy(0))
+    c.event_generate("<Motion>", x=ex_, y=ey_)
+    check(str(c.cget("cursor")) == "size_nw_se",
+          "sobre la esquina, el cursor es la flecha diagonal de estirar", str(c.cget("cursor")))
+    c.event_generate("<ButtonPress-1>", x=ex_, y=ey_)
+    for k in range(1, 9):
+        c.event_generate("<B1-Motion>", x=ex_ + 6 * k, y=ey_ + 3 * k)
+    c.event_generate("<ButtonRelease-1>", x=ex_ + 48, y=ey_ + 24)
+    app.update()
+    mk = v.marcas[0][0]
+    check((mk.get("cuerpo") or 0) > A.CUERPO_NOTA,
+          "arrastrar la esquina con el mouse agranda la letra", "cuerpo=%s" % mk.get("cuerpo"))
+    v.deshacer()
+    mk = v.marcas[0][0]
+    mk["x"] = 300.0          # al medio de la hoja, con lugar para ensanchar a la izquierda
+    v.seleccion = [0]
+    v.render()
+    derecha = v._bbox(mk).x1
+    v._empezar_manija(0, "izq")
+    v._redimensionar((v._bbox(mk).x0 - 120, mk["y"]))
+    v._soltar_seleccionar(None)
+    mk = v.marcas[0][0]
+    check(abs(v._bbox(mk).x1 - derecha) < 0.6,
+          "tirar del costado izquierdo deja quieto el derecho",
+          "%.1f vs %.1f" % (v._bbox(mk).x1, derecha))
+    check(bool(mk.get("ancho")), "y cambia el ancho de la nota")
+    v.set_modo("dibujar")
+    trazo(150, 250)
+    v.set_modo("seleccionar")
+    v.seleccion = [len(v.marcas[0]) - 1]
+    v.render()
+    app.update()
+    x0c, y0c, _x1c, _y1c = v._caja_en_pantalla(v.marcas[0][-1], len(v.marcas[0]) - 1)
+    ex = Evento(int(x0c - 4 - c.canvasx(0)), int(y0c - 4 - c.canvasy(0)))
+    check(v._manija_en(ex) is None,
+          "un dibujo elegido no tiene manijas (antes tenia cuadraditos que no hacian nada)")
+
+    print("\n== 8aj. Nota con ancho elegido arrastrando ==")
+    empezar_limpio()
+    v.set_modo("texto")
+    v._click(a_evento(60, 400))
+    v._arrastre(a_evento(200, 402))
+    v._arrastre(a_evento(360, 404))
+    v._soltar(a_evento(360, 404))
+    app.update()
+    v._editor.insert("1.0", "palabra " * 30)
+    v._cerrar_editor(confirmar=True)
+    app.update()
+    mk = v.marcas[0][0]
+    esperado = 300.0
+    check(abs((mk.get("ancho") or 0) - esperado) < 2,
+          "arrastrar con Texto elige el ancho de la nota",
+          "ancho=%s esperado=%.0f" % (mk.get("ancho"), esperado))
+    check(v._bbox(mk).width <= esperado + 0.5, "y el texto se parte dentro de ese ancho")
+
+    print("\n== 8ak. El borrador borra todo lo que toca al arrastrar ==")
+    empezar_limpio()
+    v.set_modo("dibujar")
+    for x in (100, 200, 300):
+        v._click(a_evento(x, 250))
+        for y in range(262, 330, 12):
+            v._arrastre(a_evento(x, y))
+        v._soltar(a_evento(x, 330))
+    app.update()
+    check(v.cuenta_marcas() == 3, "hay tres trazos verticales")
+    v.set_modo("borrar")
+    v._click(a_evento(80, 290))
+    for x in range(88, 340, 8):
+        v._arrastre(a_evento(x, 290))
+    v._soltar(a_evento(340, 290))
+    app.update()
+    check(v.cuenta_marcas() == 0, "una pasada del borrador los borro a los tres",
+          "quedan %d" % v.cuenta_marcas())
+    v.deshacer()
+    check(v.cuenta_marcas() == 3, "y un solo Ctrl+Z los devuelve a los tres")
+
+    print("\n== 8al. Copiar, cortar y pegar marcas ==")
+    empezar_limpio()
+    v.set_modo("texto")
+    v._click(a_evento(100, 400))
+    app.update()
+    v._editor.insert("1.0", "nota para copiar")
+    v._cerrar_editor(confirmar=True)
+    v.set_modo("seleccionar")
+    v.seleccion = [0]
+    v.copiar()
+    v.pegar()
+    app.update()
+    check(v.cuenta_marcas() == 2, "Ctrl+C y Ctrl+V duplican la nota")
+    if v.cuenta_marcas() == 2:
+        a_, b_ = v.marcas[0]
+        check(abs(b_["x"] - a_["x"] - 12) < 0.01 and abs(b_["y"] - a_["y"] - 12) < 0.01,
+              "la copia cae corrida un poco, no escondida encima")
+        check(v.seleccion == [1], "y queda elegida la copia")
+    v.ir_pagina(1)
+    v.pegar()
+    app.update()
+    check(len(v.marcas.get(1, [])) == 1 and abs(v.marcas[1][0]["x"] - v.marcas[0][0]["x"]) < 0.01,
+          "en otra pagina se pega en el mismo lugar")
+    v.ir_pagina(0)
+    v.seleccion = [1]
+    v.cortar()
+    check(v.cuenta_marcas() == 2, "Ctrl+X saca la marca de la hoja",
+          "hay %d en total" % v.cuenta_marcas())
+    v.seleccion = [0]
+    app._tecla(Tecla("Return"))
+    check(v._editor is not None, "Enter con una nota elegida la abre para editarla")
+    v._cerrar_editor(confirmar=False)
+
+    print("\n== 8am. Carpeta recordada ==")
+    archivo_real = lector._archivo_carpeta
+    lector._archivo_carpeta = lambda: os.path.join(tmp, "carpeta.txt")
+    otra = os.path.join(tmp, "otra carpeta")
+    os.makedirs(otra, exist_ok=True)
+    try:
+        lector.RECORDAR_CARPETA = True
+        app.biblioteca.cambiar_carpeta(otra)
+        check(lector.carpeta_recordada() == os.path.normpath(otra),
+              "la carpeta elegida queda recordada para la proxima vez")
+        with open(os.path.join(tmp, "carpeta.txt"), "w", encoding="utf-8") as f:
+            f.write(os.path.join(tmp, "no existe"))
+        check(lector.carpeta_recordada() is None,
+              "si esa carpeta ya no existe, vuelve a Descargas sin avisar nada")
+    finally:
+        lector.RECORDAR_CARPETA = False
+        lector._archivo_carpeta = archivo_real
+
+    print("\n== 8an. Cursor de mano y ayuda nueva ==")
+    check(lector.CURSOR_MANO != "fleur", "el programa trae su cursor de mano (mano.cur)")
+    v._pan_inicio(Evento(400, 400))
+    check(str(v.canvas.cget("cursor")) == lector.CURSOR_MANO,
+          "apretar la ruedita muestra la mano", str(v.canvas.cget("cursor")))
+    v._pan_fin(Evento(400, 400))
+    import ayuda
+    ventana = ayuda.Ventana(app)
+    app.update()
+    check(len(ventana.pestanas.tabs()) == 2, "la ayuda tiene dos pestanas: pasos y atajos")
+    ventana.destroy()
+    texto_ayuda = ayuda.como_texto("es")
+    check("escritorio" not in texto_ayuda.lower() and "descargas" not in texto_ayuda.lower(),
+          "la ayuda no supone donde esta el icono ni en que carpeta estan los PDFs")
+    check(len(ayuda.PASOS["es"]) == 5 and len(ayuda.PASOS["en"]) == 5,
+          "cinco pasos, en los dos idiomas")
+
     # Reponer lo que esperan los pasos siguientes.
     empezar_limpio()
     v.set_modo("dibujar")
@@ -994,7 +1224,9 @@ def main():
     lector.DialogoGuardado = lambda app_, ruta: None      # no abrir ventanas en el test
     v.set_modo("dibujar")
     esperadas = {p: len(l) for p, l in v.marcas.items() if l}
-    v.guardar()
+    # Este visor ya guardo una copia en el paso 8n: Ctrl+S iria a esa. Para
+    # elegir otro nombre esta "Guardar como...".
+    v.guardar(como=True)
     app.update()
     check(os.path.exists(destino), "el archivo se escribio")
     check(not v.sucio, "el programa deja de marcar 'sin guardar'")
@@ -1006,6 +1238,14 @@ def main():
           repr(portapapeles)[:70])
     check("leer_devolucion.py" in portapapeles,
           "y tambien el comando con el que el agente la lee (sirve en un chat nuevo)")
+    preguntas = []
+    lector.filedialog.asksaveasfilename = lambda **kw: (preguntas.append(kw), destino)[1]
+    v.guardar()
+    app.update()
+    check(not preguntas, "la segunda vez Ctrl+S guarda encima sin preguntar el nombre")
+    check(v.ruta_guardado == destino, "y sobre la misma copia de la primera vez")
+    check(os.path.basename(destino) in v.pie.cget("text"),
+          "avisando abajo donde guardo", v.pie.cget("text"))
 
     print("\n== 11. Lo guardado es lo que se marco ==")
     d = pymupdf.open(destino)
@@ -1062,6 +1302,8 @@ def main():
          "nombre": "revisar"},
         {"tipo": "texto", "x": 100, "y": 500, "texto": "palabra " * 30, "color": (0, 0, 0),
          "ancho": 480},
+        {"tipo": "texto", "x": 100, "y": 650, "texto": "letra grande", "color": (0, 0, 0),
+         "cuerpo": 17.5},
     ]}
     g_dev = os.path.join(tmp, "g-dev.pdf")
     A.guardar(base_g, g_dev, marcas_g)
@@ -1074,6 +1316,9 @@ def main():
     check(bool(m[1].get("ancla")) and not m[2].get("ancla"),
           "y la frase queda en la que era, no se cruza")
     check(abs(m[3].get("ancho", 0) - 480) < 0.1, "el ancho elegido de una nota se guarda")
+    check(abs((m[4].get("cuerpo") or 0) - 17.5) < 0.05,
+          "el tamano de letra de una nota se guarda (en el lugar estandar del PDF)")
+    check(not m[1].get("cuerpo"), "y una nota comun vuelve sin tamano de mas")
     A.guardar(g_dev, os.path.join(tmp, "g-dev2.pdf"),
               {1: [{"tipo": "texto", "x": 90, "y": 150, "texto": "x", "color": (0, 0, 0)}]})
     d = pymupdf.open(os.path.join(tmp, "g-dev2.pdf"))
@@ -1103,8 +1348,11 @@ def main():
     app.update()
     v_tmp._editor.insert("1.0", "nota que todavia no confirme")
     antes_dialogos = len(dialogos)
-    lector.filedialog.asksaveasfilename = lambda **kw: ""      # cancelar el guardado
+    # "Cancelar" en el cartel: ya hay una copia guardada, asi que "Si" la
+    # guardaria encima sin preguntar (y cambiaria lo que miden los pasos 12-14).
+    lector.messagebox.askyesnocancel = _falso("askyesnocancel", None)
     app._confirmar_descartar()
+    lector.messagebox.askyesnocancel = _falso("askyesnocancel", True)
     check(len(dialogos) > antes_dialogos,
           "pregunta antes de tirar una nota a medio escribir")
     v_tmp.deshacer()
@@ -1122,10 +1370,13 @@ def main():
           "la pagina se dibuja sin las marcas propias (si no, se verian dobles)")
 
     print("\n== 13. Guardar dos veces no acumula capas ==")
+    check(v2.ruta_guardado == destino,
+          "una devolucion reabierta se guarda encima de si misma (Ctrl+S)")
     destino2 = os.path.join(tmp, "otra.pdf")
     lector.filedialog.asksaveasfilename = lambda **kw: destino2
-    v2.guardar()
+    v2.guardar(como=True)          # "Guardar como..." pregunta siempre
     app.update()
+    check(v2.ruta_guardado == destino2, "\"Guardar como...\" pasa a guardar en el nombre nuevo")
     d2 = pymupdf.open(destino2)
     n2 = sum(len(list(d2[i].annots())) for i in range(d2.page_count))
     d2.close()
@@ -1135,7 +1386,8 @@ def main():
           "%d vs %d bytes" % (os.path.getsize(destino), os.path.getsize(destino2)))
 
     print("\n== 14. Guardar encima del mismo archivo que se esta mirando ==")
-    lector.filedialog.asksaveasfilename = lambda **kw: destino2
+    preguntas = []
+    lector.filedialog.asksaveasfilename = lambda **kw: (preguntas.append(kw), destino2)[1]
     app.abrir_pdf(destino2)
     app.update()
     v3 = app.visor
@@ -1143,6 +1395,7 @@ def main():
     marcas_antes = v3.cuenta_marcas()
     v3.guardar()
     app.update()
+    check(not preguntas, "Ctrl+S sobre una devolucion abierta no pregunta el nombre")
     check(len(dialogos) == antes_dialogos, "guardar encima no tira ningun error",
           "; ".join(dialogos[antes_dialogos:])[:200])
     check(os.path.exists(destino2) and os.path.getsize(destino2) > 1000,

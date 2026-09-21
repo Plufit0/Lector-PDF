@@ -10,7 +10,7 @@ DECISIONES DE DISENO (no cambiar sin leer esto):
 
 1. Las marcas se guardan como ANOTACIONES PDF ESTANDAR (Ink para los trazos,
    FreeText para los textos), no como pixeles quemados sobre la pagina. Por eso
-   el texto original del manual sigue siendo extraible intacto: ese es el
+   el texto original del documento sigue siendo extraible intacto: ese es el
    "canal 1". Las anotaciones son el "canal 2". Un solo archivo, dos canales.
 
 2. Toda anotacion escrita por este programa lleva autor (campo /T) = AUTOR.
@@ -26,9 +26,9 @@ DECISIONES DE DISENO (no cambiar sin leer esto):
 4. Paginas rotadas: las anotaciones se insertan en el espacio SIN rotar de la
    pagina, que es lo que espera PyMuPDF. Se convierte con derotation_matrix
    (que es la identidad cuando la pagina no esta rotada, asi que el camino
-   normal no paga nada). Los manuales de diseno no vienen rotados, pero un PDF
-   bajado de cualquier lado si, y una marca desplazada 90 grados seria un dolor
-   de cabeza dificil de entender.
+   normal no paga nada). La mayoria de los PDF no vienen rotados, pero algunos
+   si, y una marca desplazada 90 grados seria un dolor de cabeza dificil de
+   entender.
 
 5. El texto completo de cada nota va DOS veces: dibujado en la anotacion (para
    que se vea) y en el campo /Contents (para que se lea sin depender del
@@ -65,8 +65,14 @@ ANCHO_NOTA = 250.0
 ANCHO_MIN_NOTA = 46.0
 # Margen interno entre el texto y el borde de la caja, en puntos PDF.
 PAD_NOTA = 6.0
-# Tamano de letra de las notas, en puntos PDF.
+# Tamano de letra de las notas, en puntos PDF. Es el de entrada: cada nota
+# puede tener el suyo (clave "cuerpo"), que se cambia arrastrando una esquina de
+# la nota (decision del Disenador, sept-2026: esquinas = tamano de letra,
+# costados = ancho, como Canva, tldraw y Excalidraw).
 CUERPO_NOTA = 11.0
+# Limites del tamano de letra de una nota, en puntos PDF.
+CUERPO_MIN = 6.0
+CUERPO_MAX = 48.0
 # Alto de linea al maquetar una nota.
 ALTO_LINEA = CUERPO_NOTA * 1.30
 
@@ -168,19 +174,38 @@ def _envolver(parrafo, ancho_util):
     return lineas
 
 
-def _maquetar_nota(texto, ancho=None):
+def escala_nota(cuerpo=None):
+    """Cuanto mas grande (o chica) es una nota que la de entrada.
+
+    Una nota con letra de 22 pt es la de 11 pt al doble: margen, alto de
+    renglon, ancho minimo y ancho de entrada crecen en la misma proporcion.
+    Como el ancho del texto crece exactamente con la letra, el corte de
+    renglones no cambia: agrandar la letra agranda la nota entera, igual.
+    """
+    try:
+        cuerpo = float(cuerpo or CUERPO_NOTA)
+    except (TypeError, ValueError):
+        cuerpo = CUERPO_NOTA
+    return max(CUERPO_MIN, min(CUERPO_MAX, cuerpo)) / CUERPO_NOTA
+
+
+def _maquetar_nota(texto, ancho=None, cuerpo=None):
     """(ancho_util, lineas): como queda partida una nota dentro de su caja.
 
     Es la UNICA fuente de verdad del corte de renglones: la usan la caja
     (medir_nota), el visor para dibujar linea por linea y el PDF guardado. Si
     cada uno cortara por su cuenta, el texto se saldria de la caja.
 
-    ancho: el ancho que eligio el usuario arrastrando el borde de la nota (en
-    puntos PDF, caja entera). Sin elegir, es ANCHO_NOTA. Es un TOPE: la caja
-    nunca queda mas ancha que su renglon mas largo (fit to size), asi que
-    agrandarlo "desenrolla" renglones hasta que el texto entra en uno solo.
+    ancho: el ancho que eligio el usuario arrastrando un costado de la nota
+    (en puntos PDF, caja entera). Sin elegir, es ANCHO_NOTA (a escala). Es un
+    TOPE: la caja nunca queda mas ancha que su renglon mas largo (fit to size),
+    asi que agrandarlo "desenrolla" renglones hasta que el texto entra en uno.
+
+    cuerpo: tamano de letra de la nota. Todo se calcula a la letra de entrada
+    y despues se multiplica por la escala (ver escala_nota).
     """
-    tope_util = max(ANCHO_MIN_NOTA, ancho or ANCHO_NOTA) - 2 * PAD_NOTA
+    f = escala_nota(cuerpo)
+    tope_util = max(ANCHO_MIN_NOTA, (ancho / f) if ancho else ANCHO_NOTA) - 2 * PAD_NOTA
     # Primero se parte al tope; despues la caja se ajusta al renglon mas ancho
     # que haya quedado. Si una sola palabra es mas ancha que el tope (no se
     # puede partir), la caja la envuelve entera en vez de dejarla saliendose.
@@ -188,12 +213,12 @@ def _maquetar_nota(texto, ancho=None):
     for parrafo in (texto or "").split("\n"):
         lineas.extend(_envolver(parrafo, tope_util) if parrafo else [""])
     mas_ancha = max((_ancho_texto(l) for l in lineas), default=0.0)
-    return max(ANCHO_MIN_NOTA - 2 * PAD_NOTA, mas_ancha), lineas
+    return max(ANCHO_MIN_NOTA - 2 * PAD_NOTA, mas_ancha) * f, lineas
 
 
-def lineas_nota(texto, ancho=None):
+def lineas_nota(texto, ancho=None, cuerpo=None):
     """Los renglones de una nota tal como entran en su caja."""
-    return _maquetar_nota(texto, ancho)[1]
+    return _maquetar_nota(texto, ancho, cuerpo)[1]
 
 
 # Alto de la letra sobre la linea base, en "em" (Helvetica/Arial). Sirve para
@@ -203,13 +228,14 @@ ASCENSO = 0.905
 RENGLON_NATURAL = 1.15
 
 
-def tope_renglon(k):
+def tope_renglon(k, cuerpo=None):
     """Distancia desde el borde de arriba de la caja hasta el renglon k.
 
     La usan la pantalla (visor) y el PDF (_dibujar_nota_en_pdf): con la misma
     cuenta en los dos lados, la nota guardada se ve igual que en pantalla.
     """
-    return PAD_NOTA + (ALTO_LINEA - RENGLON_NATURAL * CUERPO_NOTA) / 2.0 + k * ALTO_LINEA
+    f = escala_nota(cuerpo)
+    return f * (PAD_NOTA + (ALTO_LINEA - RENGLON_NATURAL * CUERPO_NOTA) / 2.0 + k * ALTO_LINEA)
 
 
 def _entra_en_la_letra(texto):
@@ -234,7 +260,7 @@ def _texto_pdf(cadena):
     return "".join(salida)
 
 
-def _dibujar_nota_en_pdf(doc, annot, texto, color, borde, ancho=None):
+def _dibujar_nota_en_pdf(doc, annot, texto, color, borde, ancho=None, cuerpo=None):
     """Redibuja la nota dentro del PDF igual que en pantalla.
 
     PyMuPDF dibuja el texto de un FreeText casi pegado al borde (1,2 pt), asi que
@@ -260,6 +286,8 @@ def _dibujar_nota_en_pdf(doc, annot, texto, color, borde, ancho=None):
         # El Rect de la anotacion viene agrandado medio borde por lado.
         m = borde / 2.0
         x0, y0, x1, y1 = bx0 + m, by0 + m, bx1 - m, by1 - m
+        f = escala_nota(cuerpo)
+        letra = CUERPO_NOTA * f
         partes = [
             "q",
             "%.4f %.4f %.4f rg" % tuple(FONDO_NOTA),
@@ -267,36 +295,43 @@ def _dibujar_nota_en_pdf(doc, annot, texto, color, borde, ancho=None):
             "%.2f w" % borde,
             "%.3f %.3f %.3f %.3f re B" % (x0, y0, x1 - x0, y1 - y0),
             "BT",
-            "/Helv %.2f Tf" % CUERPO_NOTA,
+            "/Helv %.2f Tf" % letra,
             "%.4f %.4f %.4f rg" % tuple(color),
         ]
-        for k, linea in enumerate(lineas_nota(texto, ancho)):
-            base = y1 - tope_renglon(k) - ASCENSO * CUERPO_NOTA
+        for k, linea in enumerate(lineas_nota(texto, ancho, cuerpo)):
+            base = y1 - tope_renglon(k, cuerpo) - ASCENSO * letra
             partes.append("1 0 0 1 %.3f %.3f Tm (%s) Tj"
-                          % (x0 + PAD_NOTA, base, _texto_pdf(linea)))
+                          % (x0 + PAD_NOTA * f, base, _texto_pdf(linea)))
         partes += ["ET", "Q"]
         doc.update_stream(xref, "\n".join(partes).encode("latin-1"))
     except Exception:
         pass
 
 
-def medir_nota(texto, ancho=None):
+def medir_nota(texto, ancho=None, cuerpo=None):
     """Ancho y alto del recuadro de una nota, ajustados a su texto (fit to size).
 
     La caja crece solo lo necesario: se estira con la linea mas larga hasta el
     tope (ANCHO_NOTA, o el ancho que eligio el usuario) y ahi para, partiendo el
     texto en varias lineas. Asi el fondo nunca deja un hueco vacio al costado.
     """
-    ancho_util, lineas = _maquetar_nota(texto, ancho)
-    ancho = ancho_util + 2 * PAD_NOTA
-    alto = max(ALTO_LINEA + 2 * PAD_NOTA, len(lineas) * ALTO_LINEA + 2 * PAD_NOTA)
+    f = escala_nota(cuerpo)
+    ancho_util, lineas = _maquetar_nota(texto, ancho, cuerpo)
+    ancho = ancho_util + 2 * PAD_NOTA * f
+    alto = f * (max(1, len(lineas)) * ALTO_LINEA + 2 * PAD_NOTA)
     return ancho, alto
 
 
-def rect_nota(x, y, texto, ancho=None):
+def rect_nota(x, y, texto, ancho=None, cuerpo=None):
     """Recuadro PDF de una nota, ajustado a su texto, esquina sup-izq en x,y."""
-    w, h = medir_nota(texto, ancho)
+    w, h = medir_nota(texto, ancho, cuerpo)
     return pymupdf.Rect(x, y, x + w, y + h)
+
+
+def rect_de(marca):
+    """Recuadro PDF de una nota a partir de la marca entera (atajo de rect_nota)."""
+    return rect_nota(marca["x"], marca["y"], marca.get("texto", ""),
+                     marca.get("ancho"), marca.get("cuerpo"))
 
 
 def bbox_trazo(trazos, grosor):
@@ -402,7 +437,8 @@ def guardar(ruta_origen, ruta_destino, marcas):
     marcas: dict {numero_de_pagina: [marca, ...]}, donde cada marca es
         {"tipo": "lapiz", "trazos": [[(x, y), ...], ...], "color": (r,g,b), "grosor": float}
         {"tipo": "texto", "x": float, "y": float, "texto": str, "color": (r,g,b)}
-    (mas "nombre", "ancla", "ref" y, en las notas, "ancho", todas opcionales).
+    (mas "nombre", "ancla", "ref" y, en las notas, "ancho" y "cuerpo", todas
+    opcionales).
 
     Siempre se parte del PDF original en disco (no de la copia en memoria del
     visor) para que guardar varias veces no acumule capas ni degrade el archivo.
@@ -453,10 +489,14 @@ def guardar(ruta_origen, ruta_destino, marcas):
                         if not texto.strip():
                             continue
                         ancho = marca.get("ancho")
-                        rect = (rect_nota(marca["x"], marca["y"], texto, ancho) * m).normalize()
+                        cuerpo = marca.get("cuerpo")
+                        rect = (rect_nota(marca["x"], marca["y"], texto, ancho, cuerpo)
+                                * m).normalize()
+                        # El tamano de letra va en el lugar estandar del PDF
+                        # (/DA de la FreeText): cualquier otro visor lo respeta.
                         annot = pagina.add_freetext_annot(
                             rect, texto,
-                            fontsize=CUERPO_NOTA,
+                            fontsize=CUERPO_NOTA * escala_nota(cuerpo),
                             fontname="helv",
                             text_color=tuple(marca["color"]),
                             fill_color=FONDO_NOTA,
@@ -489,7 +529,7 @@ def guardar(ruta_origen, ruta_destino, marcas):
                     # posterior volveria a poner el dibujo de PyMuPDF.
                     if pagina.rotation == 0:
                         _dibujar_nota_en_pdf(doc, annot, texto,
-                                             tuple(marca["color"]), BORDE_NOTA, ancho)
+                                             tuple(marca["color"]), BORDE_NOTA, ancho, cuerpo)
                     # El ancho que eligio el usuario (arrastrando el borde) va
                     # en una clave propia: los otros visores la ignoran, y al
                     # reabrir la nota se parte igual que antes.
@@ -550,7 +590,7 @@ def doc_sin_marcas(ruta):
 
     Se usa para leer el texto original limpio: get_text() de PyMuPDF incluye
     tambien el texto dibujado por las anotaciones, asi que sin esto el "canal 1"
-    (lo que decia el manual) saldria mezclado con el "canal 2" (lo que escribio
+    (lo que decia el documento) saldria mezclado con el "canal 2" (lo que escribio
     el usuario encima) y el agente leeria sus propias notas como parte del documento.
     """
     doc = pymupdf.open(ruta)
@@ -567,6 +607,40 @@ def _leer_ref(info):
     if subj.startswith(PREFIJO_REF):
         return limpiar_nombre(subj[len(PREFIJO_REF):])
     return ""
+
+
+def _cuerpo_de_la_letra(doc, annot):
+    """Tamano de letra de una nota, leido de su /DA ("... /Helv 16 Tf").
+
+    Devuelve None si es el de entrada (o no se puede leer): asi una nota comun
+    vuelve igual que como se hizo, sin una clave de mas.
+    """
+    try:
+        clase, valor = doc.xref_get_key(annot.xref, "DA")
+        if clase == "string" and valor:
+            partes = valor.split()
+            for i, p in enumerate(partes):
+                if p == "Tf" and i >= 1:
+                    cuerpo = float(partes[i - 1])
+                    if cuerpo > 0 and abs(cuerpo - CUERPO_NOTA) > 0.05:
+                        return max(CUERPO_MIN, min(CUERPO_MAX, cuerpo))
+                    return None
+    except Exception:
+        pass
+    return None
+
+
+def es_devolucion(doc):
+    """True si el PDF lo escribio este programa (una devolucion ya guardada).
+
+    Sirve para Guardar (Ctrl+S): una devolucion reabierta se guarda encima de
+    si misma, como en cualquier editor; un PDF original nunca se toca, asi que
+    la primera vez se pregunta el nombre de la copia.
+    """
+    try:
+        return FIRMA_PRODUCTOR in ((doc.metadata or {}).get("producer") or "")
+    except Exception:
+        return False
 
 
 def _color_de_la_letra(doc, annot):
@@ -689,6 +763,9 @@ def cargar(doc):
                             nota["ancho"] = float(valor)
                     except Exception:
                         pass
+                    cuerpo = _cuerpo_de_la_letra(doc, annot)
+                    if cuerpo:
+                        nota["cuerpo"] = cuerpo
                     marcas.setdefault(numero, []).append(nota)
             except Exception:
                 continue

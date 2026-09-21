@@ -129,7 +129,7 @@ TEXTOS = {
 
     # ---------------------------------------------------------- biblioteca ---
     "bib_pdfs_en": {"es": "PDFs en %s", "en": "PDFs in %s"},
-    "bib_otra_carpeta": {"es": "Otra carpeta…", "en": "Other folder…"},
+    "bib_otra_carpeta": {"es": "Cambiar carpeta…", "en": "Change folder…"},
     "bib_abrir_archivo": {"es": "Abrir archivo…", "en": "Open file…"},
     "bib_actualizar": {"es": "Actualizar", "en": "Refresh"},
     "bib_filtrar": {"es": "Filtrar:", "en": "Filter:"},
@@ -168,12 +168,13 @@ TEXTOS = {
     "tip_carpeta": {"es": "Volver a la lista de PDFs (Ctrl+W)",
                     "en": "Back to the list of PDFs (Ctrl+W)"},
     "tip_dibujar": {"es": "Dibujar a mano alzada (D)", "en": "Draw freehand (D)"},
-    "tip_texto": {"es": "Escribir una nota (T)", "en": "Write a note (T)"},
+    "tip_texto": {"es": "Escribir una nota: clic donde la querés, o arrastrá para elegir su ancho (T)",
+                  "en": "Write a note: click where you want it, or drag to choose its width (T)"},
     "tip_seleccionar": {
         "es": "Elegir, mover y editar marcas. Arrastrar en un lugar vacío elige texto (S)",
         "en": "Pick, move and edit marks. Dragging on an empty area selects text (S)"},
-    "tip_borrar": {"es": "Borrar la marca en la que hagas clic (B)",
-                   "en": "Erase the mark you click on (B)"},
+    "tip_borrar": {"es": "Borrar la marca en la que hagas clic, o arrastrá por encima de varias (B)",
+                   "en": "Erase the mark you click on, or drag over several of them (E)"},
     "tip_grueso": {"es": "Trazo grueso o fino", "en": "Thick or thin stroke"},
     "tip_deshacer": {"es": "Deshacer (Ctrl+Z)", "en": "Undo (Ctrl+Z)"},
     "tip_rehacer": {"es": "Rehacer (Ctrl+Y)", "en": "Redo (Ctrl+Y)"},
@@ -196,8 +197,9 @@ TEXTOS = {
     "tip_ayuda": {"es": "Cómo se usa (F1)", "en": "How to use it (F1)"},
     "tip_guardar": {"es": "Guardar la devolución y copiar el mensaje para el chat (Ctrl+S)",
                     "en": "Save the feedback and copy the message for the chat (Ctrl+S)"},
-    "tip_ojo": {"es": "Mostrar u ocultar tus marcas para leer el documento limpio",
-                "en": "Show or hide your marks to read the clean document"},
+    "tip_guardar_mas": {"es": "Guardar como… (Ctrl+Shift+S)", "en": "Save as… (Ctrl+Shift+S)"},
+    "tip_ojo": {"es": "Ocultar tus marcas para leer el documento limpio, y volver a mostrarlas",
+                "en": "Hide your marks to read the clean document, and show them again"},
     "color_rojo": {"es": "Rojo", "en": "Red"},
     "color_naranja": {"es": "Naranja", "en": "Orange"},
     "color_verde": {"es": "Verde", "en": "Green"},
@@ -209,9 +211,12 @@ TEXTOS = {
     "buscar_sin_resultados": {"es": "Sin resultados", "en": "No results"},
     "buscar_n_de_m": {"es": "%d de %d", "en": "%d of %d"},
 
-    # ------------------------------------------------------- visor: ojito ----
-    "ojo_marcas": {"es": "\U0001F441  Marcas", "en": "\U0001F441  Marks"},
-    "ojo_ocultas": {"es": "\U0001F441  (ocultas)", "en": "\U0001F441  (hidden)"},
+    # ------------------------------------------- visor: ocultar marcas ----
+    # Dice la ACCION que hace el boton. Apretado (hundido y de color), las
+    # marcas estan ocultas y el texto pasa a "Mostrar marcas" (decision del
+    # Disenador, sept-2026).
+    "ojo_ocultar": {"es": "Ocultar marcas", "en": "Hide marks"},
+    "ojo_mostrar": {"es": "Mostrar marcas", "en": "Show marks"},
 
     # ------------------------------------------------------- visor: panel ----
     "pnl_comentar": {"es": "Comentar esta frase", "en": "Comment on this sentence"},
@@ -229,6 +234,7 @@ TEXTOS = {
     "grosor_grueso": {"es": "Grueso", "en": "Thick"},
     "pnl_editar_texto": {"es": "Editar el texto", "en": "Edit the text"},
     "pnl_ancho_auto": {"es": "Ancho automático", "en": "Automatic width"},
+    "pnl_letra_normal": {"es": "Tamaño de letra normal", "en": "Normal text size"},
     "pnl_unificar": {"es": "Unificar en un solo dibujo",
                      "en": "Merge into a single drawing"},
     "pnl_borrar": {"es": "Borrar", "en": "Delete"},
@@ -254,6 +260,10 @@ TEXTOS = {
 
     # ------------------------------------------------- menu del clic derecho --
     "menu_copiar": {"es": "Copiar", "en": "Copy"},
+    "menu_cortar": {"es": "Cortar", "en": "Cut"},
+    "menu_pegar": {"es": "Pegar acá", "en": "Paste here"},
+    "menu_guardar_como": {"es": "Guardar como…", "en": "Save as…"},
+    "tecla_supr": {"es": "Supr", "en": "Del"},
     "menu_nota_aca": {"es": "Escribir una nota acá", "en": "Write a note here"},
     "menu_seleccionar_todo": {"es": "Seleccionar todas las marcas",
                               "en": "Select all marks"},
@@ -285,8 +295,11 @@ TEXTOS = {
         "es": "Escribiendo una nota  —  Esc o clic afuera para confirmar",
         "en": "Writing a note  —  Esc or click outside to confirm"},
     "pie_guardando": {"es": "Guardando…", "en": "Saving…"},
-    "pie_marcas": {"es": "%d marca(s)%s", "en": "%d mark(s)%s"},
-    "pie_sin_guardar": {"es": "   ·   SIN GUARDAR", "en": "   ·   UNSAVED"},
+    "pie_guardado": {"es": "Guardado en %s. El mensaje para el chat ya está copiado: pegalo con Ctrl+V.",
+                     "en": "Saved to %s. The message for the chat is already copied: paste it with Ctrl+V."},
+    "pie_copiadas": {"es": "%d marca(s) copiada(s). Ctrl+V para pegar.",
+                     "en": "%d mark(s) copied. Ctrl+V to paste."},
+    "pie_pegadas": {"es": "%d marca(s) pegada(s).", "en": "%d mark(s) pasted."},
 
     # ------------------------------------------------------- visor: errores --
     "v_pdf_sin_paginas": {
@@ -307,9 +320,9 @@ TEXTOS = {
     "dlg_no_guardar_titulo": {"es": "No se pudo guardar", "en": "Could not save"},
     "dlg_no_guardar_cuerpo": {
         "es": "%s\n\nEl PDF anterior quedó intacto y tus marcas siguen en pantalla:\n"
-              "probá con Guardar y otro nombre.",
+              "probá con Guardar como… (Ctrl+Shift+S) y otro nombre.",
         "en": "%s\n\nThe previous PDF is untouched and your marks are still on screen:\n"
-              "try Save with a different name."},
+              "try Save as… (Ctrl+Shift+S) with a different name."},
 
     # ----------------------------------------------------- dialogo guardado --
     "dlg_guardado_titulo": {"es": "Guardado", "en": "Saved"},

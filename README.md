@@ -24,18 +24,22 @@ texto original del documento, y cada marca con la frase sobre la que cae.
 - **Dibujar** a mano alzada y **escribir notas** encima del PDF.
 - **Atar** una nota o un dibujo a una frase concreta, para que no haya dudas de
   a qué se refiere.
-- **Mover, recolorear, renombrar, unir y borrar** lo marcado; las notas se
-  ajustan solas a su texto y se pueden ensanchar arrastrando su borde.
+- **Mover, copiar, recolorear, renombrar, unir y borrar** lo marcado. Las notas
+  se ajustan solas a su texto: sus costados cambian el ancho y sus esquinas el
+  tamaño de letra.
+- **Ocultar las marcas** un momento para leer el documento limpio.
 - **Buscar** texto en el documento y comentar lo encontrado.
-- **Guardar** con un clic: el programa deja en el portapapeles un mensaje listo
-  para pegar en el chat, con el comando exacto para que el agente lo lea.
+- **Guardar** como en cualquier editor: la primera vez elegís el nombre de la
+  copia y después `Ctrl+S` guarda encima. Queda en el portapapeles un mensaje
+  listo para pegar en el chat, con el comando exacto para que el agente lo lea.
+- La lista de PDFs abre en **la última carpeta que usaste**.
 - Interfaz en **español e inglés** (botón *English / Español*).
 
 ### Atajos principales
 
 | Acción | Atajo |
 |---|---|
-| Seleccionar / Dibujar / Texto / Borrar | `S` / `D` / `T` / `B` |
+| Seleccionar / Dibujar / Texto / Borrar (la letra subrayada del botón) | `S` / `D` / `T` / `B` |
 | Leer (desplazarse) | rueda del mouse |
 | Arrastrar la hoja | apretar la ruedita y mover |
 | Elegir por área | clic derecho y arrastrar |
@@ -44,12 +48,14 @@ texto original del documento, y cada marca con la frase sobre la que cae.
 | Hoja entera / tamaño real / ancho | `Ctrl+0` / `Ctrl+1` / `Ctrl+2` |
 | Buscar | `Ctrl+F`, `Enter` o `F3` para el siguiente |
 | Deshacer / Rehacer | `Ctrl+Z` / `Ctrl+Y` |
+| Copiar / cortar / pegar marcas | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
 | Elegir todas las marcas | `Ctrl+A` |
+| Editar la nota elegida | doble clic o `Enter` |
 | Mover lo elegido | flechas (`Shift` para más) |
 | Borrar lo elegido | `Supr` |
-| Guardar | `Ctrl+S` |
+| Guardar / Guardar como… | `Ctrl+S` / `Ctrl+Shift+S` |
 | Abrir otro PDF / volver a la lista | `Ctrl+O` / `Ctrl+W` |
-| Instructivo completo | `F1` |
+| Ayuda (pasos y atajos) | `F1` |
 
 Pasando el mouse por cualquier botón aparece qué hace y su atajo.
 
@@ -89,7 +95,8 @@ círculo, un tachado o una flecha).
 Como **anotaciones PDF estándar**, no como píxeles pegados a la hoja: por eso se
 ven en cualquier otro lector de PDF, el texto del documento sigue intacto y las
 marcas se pueden seguir editando después. El PDF original nunca se modifica:
-siempre se guarda una copia nueva (`-devolucion`, numerada).
+la primera vez se guarda una copia nueva (`-devolucion`, numerada) y después se
+actualiza esa misma copia.
 
 ### Archivos
 
@@ -99,13 +106,14 @@ siempre se guarda una copia nueva (`-devolucion`, numerada).
 | `anotaciones.py` | guardar y leer las marcas dentro del PDF |
 | `leer_devolucion.py` | el lector de devoluciones que corre el agente |
 | `idiomas.py` | todos los textos de la interfaz, en español e inglés |
-| `ayuda.py` | el instructivo del botón `?` |
+| `ayuda.py` | la ayuda del botón `?` (F1): pasos y atajos |
 | `errores.py` | registro de errores de la sesión |
+| `mano.cur` | el cursor de mano para arrastrar la hoja |
 | `autotest.py` | pruebas automáticas: `python autotest.py` |
 | `instalar.ps1` | instalador |
 
-Nada se escribe junto al programa: el registro de errores y el idioma elegido
-van a `%LOCALAPPDATA%\LectorPDF`.
+Nada se escribe junto al programa: el registro de errores, el idioma elegido y
+la última carpeta van a `%LOCALAPPDATA%\LectorPDF`.
 
 ---
 
@@ -125,18 +133,21 @@ the document's original text, and each mark with the sentence it falls on.
 - **Draw** freehand and **write notes** on top of the PDF.
 - **Tie** a note or a drawing to a specific sentence, so there is no doubt
   about what it refers to.
-- **Move, recolor, rename, merge and delete** marks; notes fit their text by
-  themselves and can be widened by dragging their edge.
+- **Move, copy, recolor, rename, merge and delete** marks. Notes fit their text
+  by themselves: their sides change the width and their corners the text size.
+- **Hide your marks** for a moment to read the clean document.
 - **Find** text in the document and comment on what you found.
-- **Save** in one click: the program puts a ready-to-paste message on the
+- **Save** like in any editor: the first time you choose the copy's name, and
+  then `Ctrl+S` saves over it. A ready-to-paste message is left on the
   clipboard, with the exact command the agent needs to read it.
+- The PDF list opens in **the last folder you used**.
 - Interface in **Spanish and English** (*English / Español* button).
 
 ### Main shortcuts
 
 | Action | Shortcut |
 |---|---|
-| Select / Draw / Text / Erase | `S` / `D` / `T` / `B` |
+| Select / Draw / Text / Erase (the underlined letter on the button) | `S` / `D` / `T` / `E` |
 | Read (scroll) | mouse wheel |
 | Drag the sheet | press the wheel and move |
 | Select by area | right-click and drag |
@@ -145,12 +156,14 @@ the document's original text, and each mark with the sentence it falls on.
 | Whole page / actual size / width | `Ctrl+0` / `Ctrl+1` / `Ctrl+2` |
 | Find | `Ctrl+F`, `Enter` or `F3` for the next one |
 | Undo / Redo | `Ctrl+Z` / `Ctrl+Y` |
+| Copy / cut / paste marks | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
 | Select all marks | `Ctrl+A` |
+| Edit the selected note | double-click or `Enter` |
 | Nudge the selection | arrows (`Shift` for more) |
 | Delete the selection | `Del` |
-| Save | `Ctrl+S` |
+| Save / Save as… | `Ctrl+S` / `Ctrl+Shift+S` |
 | Open another PDF / back to the list | `Ctrl+O` / `Ctrl+W` |
-| Full guide | `F1` |
+| Help (steps and shortcuts) | `F1` |
 
 Hovering over any button shows what it does and its shortcut.
 
@@ -188,8 +201,9 @@ circle, a strikethrough or an arrow).
 
 As **standard PDF annotations**, not pixels burned onto the page: that is why
 they show up in any other PDF reader, the document's text stays intact, and the
-marks can still be edited later. The original PDF is never modified: a new copy
-is always saved (`-devolucion`, numbered).
+marks can still be edited later. The original PDF is never modified: the first
+time a new copy is saved (`-devolucion`, numbered), and after that the same copy
+is updated.
 
 ### Files
 
@@ -199,10 +213,11 @@ is always saved (`-devolucion`, numbered).
 | `anotaciones.py` | saving and reading marks inside the PDF |
 | `leer_devolucion.py` | the returned-file reader the agent runs |
 | `idiomas.py` | every interface text, in Spanish and English |
-| `ayuda.py` | the guide behind the `?` button |
+| `ayuda.py` | the help behind the `?` button (F1): steps and shortcuts |
 | `errores.py` | session error log |
+| `mano.cur` | the hand cursor for dragging the sheet |
 | `autotest.py` | automated tests: `python autotest.py` |
 | `instalar.ps1` | installer |
 
-Nothing is written next to the program: the error log and the chosen language
-go to `%LOCALAPPDATA%\LectorPDF`.
+Nothing is written next to the program: the error log, the chosen language and
+the last folder go to `%LOCALAPPDATA%\LectorPDF`.

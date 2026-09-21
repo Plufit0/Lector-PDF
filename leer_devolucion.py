@@ -224,7 +224,7 @@ def informe(ruta, solo_marcas=False, png_dir=None):
         # Orden de lectura: de arriba hacia abajo, y a igual altura de izq a der.
         def clave(mk):
             r = (A.bbox_trazo(mk["trazos"], mk.get("grosor", 2.0)) if mk["tipo"] == "lapiz"
-                 else A.rect_nota(mk["x"], mk["y"], mk["texto"], mk.get("ancho")))
+                 else A.rect_de(mk))
             return (round(r.y0 / 10), r.x0)
 
         print("--- pagina %d (%d marca(s)) ---" % (n + 1, len(lista)))
@@ -236,7 +236,7 @@ def informe(ruta, solo_marcas=False, png_dir=None):
                 mk["nombre"] = A.nombre_por_defecto(mk["tipo"], n, indice)
         for mk in sorted(lista, key=clave):
             if mk["tipo"] == "texto":
-                rect = A.rect_nota(mk["x"], mk["y"], mk["texto"], mk.get("ancho"))
+                rect = A.rect_de(mk)
                 ancla = mk.get("ancla")
                 if ancla and ancla.get("cita"):
                     # Nota ATADA a una frase: no hay nada que deducir. Quien
