@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Lector PDF — leer un manual de diseno y marcarlo encima, sin cambiar de modo.
+Lector PDF — leer cualquier PDF y marcarlo encima para devolverselo a un agente.
 
 Flujo para el que fue hecho (no desviarse de esto sin pedirlo):
   acceso directo en el escritorio -> abre mostrando los PDFs de Descargas ->
@@ -13,7 +13,8 @@ DECISIONES DE DISENO (leer antes de cambiar nada):
    Decision del Disenador (cambiada a pedido, sept-2026): el estado en reposo es
    Seleccionar, como en los programas de edicion, para poder elegir, mover y
    tocar lo ya marcado sin apretar un boton antes. Para marcar se elige Dibujar
-   o Texto; al terminar, el programa vuelve solo a Seleccionar. La rueda SIEMPRE
+   o Texto. Texto vuelve solo a Seleccionar al terminar la nota; Dibujar queda
+   puesta para poder hacer varios trazos seguidos. La rueda SIEMPRE
    lee (scroll), en cualquier modo: leer nunca depende de la herramienta activa.
    Si alguna vez se agrega una herramienta, la rueda tiene que seguir leyendo.
 
@@ -39,6 +40,7 @@ import sys
 import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from tkinter import font as tkfont
 
 # El modulo de idiomas se importa aparte y ANTES del bloque de abajo: no depende
 # de nada que pueda faltar (solo de 'os'), asi que hasta los carteles de "no pudo
@@ -79,7 +81,7 @@ def _carpeta_descargas():
 
     Se pregunta a Windows en vez de asumir "~/Downloads", porque puede estar
     redirigida (a OneDrive, a otro disco) y entonces el programa abriria una
-    carpeta vacia y David no encontraria el manual que acaba de bajar.
+    carpeta vacia y no apareceria el PDF que se acaba de bajar.
     """
     try:
         import ctypes
@@ -120,6 +122,11 @@ ANCHO_PANEL = 258
 # esto la hoja queda pegada al borde y cuesta ver donde empieza y termina; un
 # poco de colchon la despega y se lee mas comoda.
 CUSHION_HOJA = 26
+# Cursor de cada herramienta. Un solo lugar: antes estaba copiado en cuatro
+# metodos y era facil que uno quedara distinto. La "manito" (fleur) queda
+# reservada para arrastrar la hoja con la ruedita apretada.
+CURSORES = {"dibujar": "pencil", "texto": "xterm", "seleccionar": "arrow",
+            "borrar": "dotbox"}
 
 
 def mezclar(color, alfa, fondo=(1.0, 1.0, 1.0)):
@@ -142,6 +149,79 @@ def tamano_legible(bytes_):
         bytes_ /= 1024.0
 
 
+def _cerca_del_trazo(px, py, trazos, margen):
+    """True si el punto (px, py) esta a menos de 'margen' de algun tramo del trazo.
+
+    Es la prueba de "clic sobre un dibujo": se mide la distancia a la linea
+    dibujada, no al recuadro que la envuelve.
+    """
+    m2 = margen * margen
+    for trazo in trazos:
+        if len(trazo) == 1:
+            (x, y), = trazo
+            if (px - x) ** 2 + (py - y) ** 2 <= m2:
+                return True
+        for (x0, y0), (x1, y1) in zip(trazo, trazo[1:]):
+            dx, dy = x1 - x0, y1 - y0
+            largo2 = dx * dx + dy * dy
+            u = 0.0 if largo2 == 0 else max(0.0, min(1.0, ((px - x0) * dx + (py - y0) * dy) / largo2))
+            cx, cy = x0 + u * dx, y0 + u * dy
+            if (px - cx) ** 2 + (py - cy) ** 2 <= m2:
+                return True
+    return False
+
+
+class Globito:
+    """Cartel de ayuda que aparece al dejar el mouse quieto sobre un control.
+
+    Dice que hace el boton y su atajo de teclado ("Dibujar (D)"). El texto se
+    pide a idiomas.py en el momento de mostrarlo, asi sale en el idioma activo.
+    Antes no habia ninguno: los cinco colores eran botones sin texto.
+    """
+
+    def __init__(self, widget, clave):
+        self.widget, self.clave = widget, clave
+        self._espera = None
+        self._ventana = None
+        widget.bind("<Enter>", self._programar, add="+")
+        widget.bind("<Leave>", self._ocultar, add="+")
+        widget.bind("<ButtonPress>", self._ocultar, add="+")
+
+    def _programar(self, _e=None):
+        self._cancelar()
+        self._espera = self.widget.after(550, self._mostrar)
+
+    def _cancelar(self):
+        if self._espera is not None:
+            try:
+                self.widget.after_cancel(self._espera)
+            except Exception:
+                pass
+            self._espera = None
+
+    def _mostrar(self):
+        self._espera = None
+        try:
+            x = self.widget.winfo_rootx() + 6
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+            self._ventana = tk.Toplevel(self.widget)
+            self._ventana.wm_overrideredirect(True)
+            self._ventana.wm_geometry("+%d+%d" % (x, y))
+            tk.Label(self._ventana, text=t(self.clave), bg="#FFFFE6", fg="#1F2328",
+                     relief="solid", bd=1, font=("Segoe UI", 9), padx=7, pady=3).pack()
+        except Exception:
+            self._ventana = None
+
+    def _ocultar(self, _e=None):
+        self._cancelar()
+        if self._ventana is not None:
+            try:
+                self._ventana.destroy()
+            except Exception:
+                pass
+            self._ventana = None
+
+
 def ruta_libre(carpeta, base):
     """Devuelve una ruta que no existe, numerando: -devolucion, -devolucion-2, ...
 
@@ -158,13 +238,20 @@ def ruta_libre(carpeta, base):
 # =============================================================== biblioteca ==
 
 class Biblioteca(ttk.Frame):
-    """Pantalla inicial: los PDFs de una carpeta, el mas nuevo primero."""
+    """Pantalla inicial: los PDFs de una carpeta, el mas nuevo primero.
+
+    Arranca siempre en Descargas: es el flujo para el que fue hecho (se baja un
+    PDF y se lo abre). Se puede filtrar escribiendo, ordenar tocando el titulo
+    de una columna, o abrir un PDF de cualquier lado con "Abrir archivo...".
+    """
 
     def __init__(self, app):
         super().__init__(app.contenedor)
         self.app = app
         self.carpeta = CARPETA_INICIAL
-        self.archivos = []
+        self.archivos = []              # rutas, en el orden en que se ven
+        self._entradas = []             # (ruta, nombre, fecha, tamano) de la carpeta
+        self._orden = ("fecha", True)   # columna y si va de mayor a menor
         self._construir()
         self.refrescar()
 
@@ -178,18 +265,29 @@ class Biblioteca(ttk.Frame):
         # Boton para pasar de espanol a ingles y al reves.
         ttk.Button(barra, text=t("boton_idioma"),
                    command=self.app.cambiar_idioma).pack(side="right", padx=(6, 0))
+        ttk.Button(barra, text=t("bib_abrir_archivo"),
+                   command=self.app.abrir_archivo).pack(side="right")
         ttk.Button(barra, text=t("bib_otra_carpeta"),
-                   command=self.elegir_carpeta).pack(side="right")
+                   command=self.elegir_carpeta).pack(side="right", padx=6)
         ttk.Button(barra, text=t("bib_actualizar"),
-                   command=self.refrescar).pack(side="right", padx=6)
+                   command=self.refrescar).pack(side="right")
+
+        # Filtro: se escribe y la lista muestra solo los nombres que lo tienen.
+        fila = ttk.Frame(self, padding=(12, 0, 12, 6))
+        fila.pack(fill="x")
+        ttk.Label(fila, text=t("bib_filtrar")).pack(side="left")
+        self.filtro = tk.StringVar()
+        entrada = ttk.Entry(fila, textvariable=self.filtro, width=40)
+        entrada.pack(side="left", padx=(6, 0))
+        entrada.bind("<Down>", lambda e: (self.tabla.focus_set(), "break")[1])
+        entrada.bind("<Return>", lambda e: self.abrir_seleccion())
 
         cuerpo = ttk.Frame(self, padding=(12, 0, 12, 8))
         cuerpo.pack(fill="both", expand=True)
         cols = ("nombre", "fecha", "tamano")
         self.tabla = ttk.Treeview(cuerpo, columns=cols, show="headings", selectmode="browse")
-        self.tabla.heading("nombre", text=t("col_archivo"))
-        self.tabla.heading("fecha", text=t("col_modificado"))
-        self.tabla.heading("tamano", text=t("col_tamano"))
+        for col in cols:
+            self.tabla.heading(col, command=lambda c=col: self._ordenar_por(c))
         self.tabla.column("nombre", width=620, anchor="w")
         self.tabla.column("fecha", width=170, anchor="w")
         self.tabla.column("tamano", width=110, anchor="e")
@@ -206,29 +304,34 @@ class Biblioteca(ttk.Frame):
         self.estado = ttk.Label(pie, text="", foreground="#555")
         self.estado.pack(side="left")
         ttk.Button(pie, text=t("bib_abrir"), command=self.abrir_seleccion).pack(side="right")
+        # El filtro se engancha al final, cuando la tabla ya existe.
+        self.filtro.trace_add("write", lambda *_: self._poblar())
 
     def retraducir(self):
-        """Rehace los widgets en el idioma nuevo, conservando la carpeta abierta."""
-        carpeta = self.carpeta
+        """Rehace los widgets en el idioma nuevo, conservando carpeta, filtro y
+        el archivo elegido."""
+        carpeta, filtro, elegido = self.carpeta, self.filtro.get(), self._ruta_elegida()
         for w in list(self.winfo_children()):
             w.destroy()
         self._construir()
         self.carpeta = carpeta
-        self.refrescar()
+        self.filtro.set(filtro)
+        self.refrescar(seleccionar=elegido)
 
     def elegir_carpeta(self):
         c = filedialog.askdirectory(initialdir=self.carpeta, title=t("bib_elegir_carpeta_titulo"))
         if c:
             self.carpeta = c
             self.refrescar()
+            self.app.actualizar_titulo()
 
-    def refrescar(self):
-        self.lbl.config(text=t("bib_pdfs_en") % os.path.basename(self.carpeta.rstrip("\\/")) or self.carpeta)
-        for i in self.tabla.get_children():
-            self.tabla.delete(i)
-        self.archivos = []
+    def refrescar(self, seleccionar=None):
+        # En la raiz de un disco ("D:\") el nombre de la carpeta queda vacio:
+        # ahi se muestra la ruta entera (antes decia "PDFs en " y nada mas).
+        nombre = os.path.basename(self.carpeta.rstrip("\\/")) or self.carpeta
+        self.lbl.config(text=t("bib_pdfs_en") % nombre)
+        entradas = []
         try:
-            entradas = []
             with os.scandir(self.carpeta) as it:
                 for e in it:
                     if e.is_file() and e.name.lower().endswith(".pdf"):
@@ -237,33 +340,70 @@ class Biblioteca(ttk.Frame):
                         except OSError:
                             continue
                         entradas.append((e.path, e.name, st.st_mtime, st.st_size))
-            entradas.sort(key=lambda t: t[2], reverse=True)
         except OSError as err:
+            self._entradas = []
+            self._poblar()
             self.estado.config(text=t("bib_no_leer_carpeta") % err)
             return
+        self._entradas = entradas
+        self._poblar(seleccionar)
 
+    def _ordenar_por(self, col):
+        """Clic en el titulo de una columna: ordena por ella; otro clic, al reves."""
+        actual, desc = self._orden
+        self._orden = (col, (not desc) if col == actual else col != "nombre")
+        self._poblar(self._ruta_elegida())
+
+    def _ruta_elegida(self):
+        sel = self.tabla.selection()
+        if not sel:
+            return None
+        idx = self.tabla.index(sel[0])
+        return self.archivos[idx] if 0 <= idx < len(self.archivos) else None
+
+    def _poblar(self, seleccionar=None):
+        """Vuelca en la tabla las entradas que pasan el filtro, en el orden elegido."""
         import datetime
-        for ruta, nombre, mtime, size in entradas:
+        for i in self.tabla.get_children():
+            self.tabla.delete(i)
+        filtro = self.filtro.get().strip().lower()
+        filas = [e for e in self._entradas if filtro in e[1].lower()]
+        col, desc = self._orden
+        clave = {"nombre": lambda e: e[1].lower(), "fecha": lambda e: e[2],
+                 "tamano": lambda e: e[3]}[col]
+        filas.sort(key=clave, reverse=desc)
+        flecha = " \u25BC" if desc else " \u25B2"
+        for c, k in (("nombre", "col_archivo"), ("fecha", "col_modificado"),
+                     ("tamano", "col_tamano")):
+            self.tabla.heading(c, text=t(k) + (flecha if c == col else ""))
+        self.archivos = []
+        for ruta, nombre, mtime, size in filas:
             fecha = datetime.datetime.fromtimestamp(mtime).strftime("%d/%m/%Y %H:%M")
             self.tabla.insert("", "end", values=(nombre, fecha, tamano_legible(size)))
             self.archivos.append(ruta)
 
         if self.archivos:
-            primero = self.tabla.get_children()[0]
-            self.tabla.selection_set(primero)
-            self.tabla.focus(primero)
-            self.tabla.focus_set()
-            self.estado.config(text=t("bib_cuenta") % len(self.archivos))
+            # Al volver de un PDF, queda elegido el que se estaba mirando.
+            idx = self.archivos.index(seleccionar) if seleccionar in self.archivos else 0
+            item = self.tabla.get_children()[idx]
+            self.tabla.selection_set(item)
+            self.tabla.focus(item)
+            self.tabla.see(item)
+            if not filtro:
+                self.tabla.focus_set()
+            if len(filas) < len(self._entradas):
+                self.estado.config(text=t("bib_cuenta_filtrados")
+                                   % (len(filas), len(self._entradas)))
+            else:
+                self.estado.config(text=t("bib_cuenta") % len(self.archivos))
         else:
-            self.estado.config(text=t("bib_sin_pdfs"))
+            self.estado.config(text=t("bib_sin_pdfs") if not self._entradas
+                               else t("bib_sin_coincidencias"))
 
     def abrir_seleccion(self):
-        sel = self.tabla.selection()
-        if not sel:
-            return
-        idx = self.tabla.index(sel[0])
-        if 0 <= idx < len(self.archivos):
-            self.app.abrir_pdf(self.archivos[idx])
+        ruta = self._ruta_elegida()
+        if ruta:
+            self.app.abrir_pdf(ruta)
 
 
 # ==================================================================== visor ==
@@ -283,7 +423,7 @@ class Visor(ttk.Frame):
         self.zoom = 1.0
         # Por defecto se ve la hoja ENTERA, no ajustada al ancho: en un monitor
         # ancho, "ajustar al ancho" agranda tanto la pagina que cada una ocupa
-        # dos pantallas y media de scroll. Para revisar un manual de 14 paginas
+        # dos pantallas y media de scroll. Para revisar un documento de 14 paginas
         # conviene ver la hoja completa y pasar de pagina; el que quiera leer
         # letra grande tiene el boton "Ancho".
         self.modo_zoom = "pagina"          # "pagina" | "ancho" | "libre"
@@ -311,6 +451,23 @@ class Visor(ttk.Frame):
         self._editor_xy = None
         self._pan = None
         self._rts = None            # recuadro de seleccion por area (boton derecho)
+        self._redimensionando = None  # nota a la que se le esta cambiando el ancho
+        self._cajas_notas = {}      # indice -> caja de cada nota tal como se dibujo
+        # Estado del cuadro de escribir y de otras cosas de paso. Se declaran
+        # aca para que ninguna funcion dependa de que otra las haya creado antes.
+        self._editor_nombre = ""
+        self._editor_ancla = None
+        self._editor_original = None
+        self._editor_color = self.color
+        self._editor_ancho = None
+        self._editor_fuente = None
+        self._cursor_actual = CURSORES[self.modo]
+        self._ultimo_salto = (0, 0.0)   # (direccion, momento) del ultimo salto con la rueda
+        self._region = (0, 0)           # tamano total del area desplazable
+        self._clave_imagen = None
+        self._tam_imagen = (0, 0)
+        self._busqueda = {"q": None, "aciertos": [], "i": -1}
+        self.dialogo_guardado = None
         # Estado con el que quedo el archivo en disco: todo lo que difiera
         # de esto es un cambio sin guardar.
         self.firma_guardada = self._firma()
@@ -324,6 +481,7 @@ class Visor(ttk.Frame):
         (ver retraducir): las etiquetas de Tkinter se crean una sola vez, asi que
         cambiar de idioma es rehacer los widgets con el texto nuevo."""
         self._armar_barra()
+        self._armar_busqueda()
 
         cuerpo = ttk.Frame(self)
         cuerpo.pack(fill="both", expand=True)
@@ -333,17 +491,21 @@ class Visor(ttk.Frame):
         self.panel = self._armar_panel(cuerpo)
         self.canvas = tk.Canvas(cuerpo, bg=FONDO_CANVAS, highlightthickness=0, cursor="arrow")
         self.vsb = ttk.Scrollbar(cuerpo, orient="vertical", command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=self.vsb.set)
-        self.canvas.pack(side="left", fill="both", expand=True)
+        # Barra horizontal: aparece sola cuando la hoja es mas ancha que la
+        # ventana (antes solo se podia ir de costado con Shift+rueda).
+        self.hsb = ttk.Scrollbar(cuerpo, orient="horizontal", command=self.canvas.xview)
+        self.canvas.configure(yscrollcommand=self.vsb.set, xscrollcommand=self._mover_hsb)
         self.vsb.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
 
         # Barra de estado de abajo: el "ojito" para mostrar u ocultar las marcas,
         # y a su lado una linea corta de estado (marcas y "sin guardar"). Antes
         # aca habia un cartel largo con toda la ayuda; se saco por ruido.
         pie_barra = ttk.Frame(self)
         pie_barra.pack(fill="x")
-        self.btn_ojo = tk.Button(pie_barra, text="", width=12,
+        self.btn_ojo = tk.Button(pie_barra, text="", width=12, takefocus=0,
                                  command=self.toggle_ver_marcas)
+        Globito(self.btn_ojo, "tip_ojo")
         self.btn_ojo.pack(side="left", padx=(8, 4), pady=2)
         # El texto y el relieve del ojito dependen de si las marcas estan a la
         # vista: al rehacer los widgets hay que reflejar el estado actual.
@@ -358,6 +520,7 @@ class Visor(ttk.Frame):
         self.canvas.bind("<B1-Motion>", self._arrastre)
         self.canvas.bind("<ButtonRelease-1>", self._soltar)
         self.canvas.bind("<Double-Button-1>", self._doble_click)
+        self.canvas.bind("<Motion>", self._al_mover_mouse)
         self.canvas.bind("<MouseWheel>", self._rueda)
         self.canvas.bind("<Shift-MouseWheel>", self._rueda_horizontal)
         self.canvas.bind("<ButtonPress-2>", self._pan_inicio)
@@ -369,6 +532,15 @@ class Visor(ttk.Frame):
         self.canvas.bind("<B3-Motion>", self._rts_mover)
         self.canvas.bind("<ButtonRelease-3>", self._rts_soltar)
         self.canvas.focus_set()
+
+    def _mover_hsb(self, primero, ultimo):
+        """La barra horizontal se muestra solo si hace falta."""
+        self.hsb.set(primero, ultimo)
+        hace_falta = float(primero) > 0.0 or float(ultimo) < 1.0
+        if hace_falta and not self.hsb.winfo_ismapped():
+            self.hsb.pack(side="bottom", fill="x", before=self.canvas)
+        elif not hace_falta and self.hsb.winfo_ismapped():
+            self.hsb.pack_forget()
 
     def retraducir(self):
         """Rehace los widgets en el idioma nuevo sin cerrar el PDF ni tocar las
@@ -383,8 +555,7 @@ class Visor(ttk.Frame):
             w.destroy()
         self._construir_widgets()
         self.modo = modo
-        self.canvas.config(cursor={"dibujar": "pencil", "texto": "xterm",
-                                   "seleccionar": "arrow", "borrar": "dotbox"}[modo])
+        self._aplicar_cursor()
         self.seleccion = seleccion
         self.palabras_sel = palabras_sel
         self._texto_sel = texto_sel
@@ -394,65 +565,161 @@ class Visor(ttk.Frame):
 
     # ------------------------------------------------------------- barra ----
 
+    def _boton(self, padre, texto, comando, ancho=None, tip=None, **kw):
+        """Boton de la barra. Todos del mismo tipo (antes se mezclaban dos
+        estilos), ninguno toma el foco del teclado (si lo tomaba, Espacio lo
+        volvia a apretar ademas de pasar de pagina) y cada uno con su cartel."""
+        bt = tk.Button(padre, text=texto, command=comando, takefocus=0, **kw)
+        if ancho:
+            bt.config(width=ancho)
+        if tip:
+            Globito(bt, tip)
+        return bt
+
     def _armar_barra(self):
         b = ttk.Frame(self, padding=(8, 6))
         b.pack(fill="x")
+        self.barra = b
+        B = self._boton
 
-        ttk.Button(b, text=t("v_carpeta"), width=10, command=self.app.volver_biblioteca).pack(side="left")
+        # Lo de la derecha se empaqueta PRIMERO: en una pantalla angosta, lo que
+        # se corta es lo ultimo empaquetado, y Guardar no se puede perder.
+        self.btn_guardar = B(b, t("v_guardar"), self.guardar, 10, "tip_guardar",
+                             font=("Segoe UI", 9, "bold"))
+        self.btn_guardar.pack(side="right")
+        B(b, "?", self.mostrar_ayuda, 3, "tip_ayuda",
+          font=("Segoe UI", 10, "bold")).pack(side="right", padx=6)
+        # Boton para pasar de espanol a ingles y al reves.
+        B(b, t("boton_idioma"), self.app.cambiar_idioma, 8,
+          "tip_idioma").pack(side="right", padx=(0, 6))
+
+        B(b, t("v_carpeta"), self.app.volver_biblioteca, 10, "tip_carpeta").pack(side="left")
         ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
 
         self.btn_modo = {}
         for clave, etiqueta in (("dibujar", t("modo_dibujar")), ("texto", t("modo_texto")),
                                 ("seleccionar", t("modo_seleccionar")), ("borrar", t("modo_borrar"))):
-            bt = tk.Button(b, text=etiqueta, width=11 if clave == "seleccionar" else 8,
-                           relief="raised", command=lambda c=clave: self.set_modo(c))
+            bt = B(b, etiqueta, lambda c=clave: self.set_modo(c),
+                   11 if clave == "seleccionar" else 8, "tip_" + clave, relief="raised")
             bt.pack(side="left", padx=2)
             self.btn_modo[clave] = bt
 
         ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
         self.btn_color = []
         for nombre, col in COLORES:
-            bt = tk.Button(b, width=3, bg=a_hex(col), activebackground=a_hex(col),
-                           relief="raised", bd=2, command=lambda c=col: self.set_color(c))
+            bt = B(b, "", lambda c=col: self.set_color(c), 3, "color_" + nombre.lower(),
+                   bg=a_hex(col), activebackground=a_hex(col), relief="raised", bd=2)
             bt.pack(side="left", padx=1)
             self.btn_color.append((bt, col))
 
-        self.btn_grosor = tk.Button(b, text=t("v_grueso"), width=7, command=self.toggle_grosor)
+        self.btn_grosor = B(b, t("v_grueso"), self.toggle_grosor, 7, "tip_grueso")
         self.btn_grosor.pack(side="left", padx=(8, 2))
-        ttk.Button(b, text=t("v_deshacer"), width=9, command=self.deshacer).pack(side="left", padx=2)
-        ttk.Button(b, text=t("v_rehacer"), width=9, command=self.rehacer).pack(side="left")
+        B(b, t("v_deshacer"), self.deshacer, 9, "tip_deshacer").pack(side="left", padx=2)
+        B(b, t("v_rehacer"), self.rehacer, 9, "tip_rehacer").pack(side="left")
 
         ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
-        ttk.Button(b, text="-", width=3, command=lambda: self.set_zoom(self.zoom / 1.2)).pack(side="left")
-        self.btn_pagina = tk.Button(b, text=t("v_pagina"), width=7, command=self.zoom_pagina)
+        B(b, "-", lambda: self.set_zoom(self.zoom / 1.2), 3, "tip_alejar").pack(side="left")
+        self.btn_pagina = B(b, t("v_pagina"), self.zoom_pagina, 7, "tip_pagina")
         self.btn_pagina.pack(side="left", padx=2)
-        self.btn_ancho = tk.Button(b, text=t("v_ancho"), width=7, command=self.zoom_ancho)
+        self.btn_ancho = B(b, t("v_ancho"), self.zoom_ancho, 7, "tip_ancho")
         self.btn_ancho.pack(side="left")
-        ttk.Button(b, text="+", width=3, command=lambda: self.set_zoom(self.zoom * 1.2)).pack(side="left", padx=2)
+        B(b, "+", lambda: self.set_zoom(self.zoom * 1.2), 3, "tip_acercar").pack(side="left", padx=2)
+        # Cuanto zoom hay (100% = tamano real). Antes no habia forma de saberlo.
+        self.lbl_zoom = ttk.Label(b, text="", width=5, anchor="w")
+        self.lbl_zoom.pack(side="left", padx=(2, 0))
+        Globito(self.lbl_zoom, "tip_zoom")
 
         ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
-        ttk.Button(b, text="<", width=3, command=lambda: self.ir_pagina(self.pno - 1)).pack(side="left")
-        # El numero de pagina se puede escribir: en un manual de 40 paginas,
+        B(b, "<", lambda: self.ir_pagina(self.pno - 1), 3, "tip_anterior").pack(side="left")
+        # El numero de pagina se puede escribir: en un documento de 40 paginas,
         # llegar a la 27 a flechazos es una perdida de tiempo.
         self.entrada_pag = tk.Entry(b, width=4, justify="center", relief="flat",
                                     bg=FONDO_BARRA)
         self.entrada_pag.pack(side="left")
         self.entrada_pag.bind("<Return>", self._saltar_a_pagina)
         self.entrada_pag.bind("<FocusOut>", lambda e: self._actualizar_numero())
+        Globito(self.entrada_pag, "tip_num_pagina")
         self.lbl_total = ttk.Label(b, text="", width=6, anchor="w")
         self.lbl_total.pack(side="left")
-        ttk.Button(b, text=">", width=3, command=lambda: self.ir_pagina(self.pno + 1)).pack(side="left")
+        B(b, ">", lambda: self.ir_pagina(self.pno + 1), 3, "tip_siguiente").pack(side="left")
 
-        self.btn_guardar = tk.Button(b, text=t("v_guardar"), width=10, font=("Segoe UI", 9, "bold"),
-                                     command=self.guardar)
-        self.btn_guardar.pack(side="right")
-        tk.Button(b, text="?", width=3, font=("Segoe UI", 10, "bold"),
-                  command=self.mostrar_ayuda).pack(side="right", padx=6)
-        # Boton para pasar de espanol a ingles y al reves.
-        tk.Button(b, text=t("boton_idioma"), width=8,
-                  command=self.app.cambiar_idioma).pack(side="right", padx=(0, 6))
+        ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
+        B(b, t("v_buscar"), self.abrir_busqueda, 8, "tip_buscar").pack(side="left")
 
         self._pintar_botones()
+
+    # ---------------------------------------------------------------- buscar --
+
+    def _armar_busqueda(self):
+        """Barra de buscar (Ctrl+F). Se arma escondida y aparece debajo de la
+        barra de herramientas. Lo encontrado queda elegido como texto del
+        documento, asi se lo puede comentar o dibujar encima de una."""
+        f = ttk.Frame(self, padding=(8, 0, 8, 6))
+        ttk.Label(f, text=t("buscar_etiqueta")).pack(side="left")
+        self.entrada_buscar = ttk.Entry(f, width=36)
+        self.entrada_buscar.pack(side="left", padx=6)
+        self.entrada_buscar.bind("<Return>", lambda e: (self.buscar(1), "break")[1])
+        self.entrada_buscar.bind("<Shift-Return>", lambda e: (self.buscar(-1), "break")[1])
+        self.entrada_buscar.bind("<Escape>", lambda e: (self.cerrar_busqueda(), "break")[1])
+        B = self._boton
+        B(f, "\u25B2", lambda: self.buscar(-1), 3, "tip_buscar_anterior").pack(side="left")
+        B(f, "\u25BC", lambda: self.buscar(1), 3, "tip_buscar_siguiente").pack(side="left", padx=(2, 0))
+        self.lbl_buscar = ttk.Label(f, text="", foreground="#555")
+        self.lbl_buscar.pack(side="left", padx=10)
+        B(f, "\u2715", self.cerrar_busqueda, 3, "tip_buscar_cerrar").pack(side="right")
+        self.barra_busqueda = f
+
+    def abrir_busqueda(self):
+        # winfo_manager y no winfo_ismapped: "esta abierta" no depende de que
+        # la ventana ya se haya redibujado.
+        if not self.barra_busqueda.winfo_manager():
+            self.barra_busqueda.pack(fill="x", before=self.cuerpo)
+        # Si hay una frase corta elegida, se propone buscarla.
+        if self._texto_sel and len(self._texto_sel) <= 80:
+            self.entrada_buscar.delete(0, "end")
+            self.entrada_buscar.insert(0, self._texto_sel)
+        self.entrada_buscar.focus_set()
+        self.entrada_buscar.select_range(0, "end")
+
+    def cerrar_busqueda(self):
+        self.barra_busqueda.pack_forget()
+        self.canvas.focus_set()
+
+    def buscar(self, direccion=1):
+        """Va a la siguiente (o anterior) aparicion del texto buscado."""
+        q = self.entrada_buscar.get().strip() if self.barra_busqueda.winfo_manager() \
+            else (self._busqueda["q"] or "")
+        if not q:
+            self.abrir_busqueda()
+            return
+        b = self._busqueda
+        if q != b["q"]:
+            aciertos = []
+            for pno in range(self.doc.page_count):
+                for r in self.doc[pno].search_for(q):
+                    aciertos.append((pno, pymupdf.Rect(r)))
+            b.update(q=q, aciertos=aciertos, i=-1)
+            # Arranca desde la pagina que se esta mirando, no desde la primera.
+            if aciertos and direccion > 0:
+                desde = [k for k, (p, _r) in enumerate(aciertos) if p >= self.pno]
+                b["i"] = (desde[0] if desde else 0) - 1
+        aciertos = b["aciertos"]
+        if not aciertos:
+            self.lbl_buscar.config(text=t("buscar_sin_resultados"))
+            return
+        b["i"] = (b["i"] + direccion) % len(aciertos)
+        pno, r = aciertos[b["i"]]
+        if pno != self.pno:
+            self.ir_pagina(pno)
+        self.seleccion = []
+        self.palabras_sel = [r]
+        self._texto_sel = self._pagina().get_textbox(r).strip() or q
+        # Que lo encontrado quede a un tercio de la altura de la ventana.
+        _ancho, alto = self._region
+        y = r.y0 * self.zoom + self.oy - self.canvas.winfo_height() / 3.0
+        self.render(max(0.0, y) / alto if alto else 0.0)
+        self._refrescar_panel()
+        self.lbl_buscar.config(text=t("buscar_n_de_m") % (b["i"] + 1, len(aciertos)))
 
     # ------------------------------------------------- panel de propiedades --
 
@@ -474,7 +741,7 @@ class Visor(ttk.Frame):
                                   justify="left", wraplength=230, font=("Segoe UI", 8))
         self.pnl_datos.pack(fill="x", padx=12, pady=(0, 10))
 
-        # --- con texto del manual elegido -----------------------------------
+        # --- con texto del documento elegido -----------------------------------
         self.pnl_texto_pdf = tk.Frame(p, bg="#F4F6F8")
         tk.Button(self.pnl_texto_pdf, text=t("pnl_comentar"),
                   font=("Segoe UI", 9, "bold"),
@@ -537,6 +804,8 @@ class Visor(ttk.Frame):
         self.pnl_acciones = tk.Frame(p, bg="#F4F6F8")
         self.btn_editar_nota = tk.Button(self.pnl_acciones, text=t("pnl_editar_texto"),
                                          command=self._editar_nota_seleccionada)
+        self.btn_ancho_auto = tk.Button(self.pnl_acciones, text=t("pnl_ancho_auto"),
+                                        command=self.ancho_automatico)
         self.btn_unificar = tk.Button(self.pnl_acciones, text=t("pnl_unificar"),
                                       command=self._unificar)
         self.btn_borrar = tk.Button(self.pnl_acciones, text=t("pnl_borrar"),
@@ -576,7 +845,8 @@ class Visor(ttk.Frame):
         for w in (self.pnl_texto_pdf, self.pnl_nombre_bloque, self.pnl_ref_bloque,
                   self.pnl_color_bloque, self.pnl_grosor, self.pnl_acciones):
             w.pack_forget()
-        for b in (self.btn_editar_nota, self.btn_unificar, self.btn_borrar, self.btn_soltar):
+        for b in (self.btn_editar_nota, self.btn_ancho_auto, self.btn_unificar,
+                  self.btn_borrar, self.btn_soltar):
             b.pack_forget()
 
         marcas = self._marcas_seleccionadas()
@@ -585,7 +855,7 @@ class Visor(ttk.Frame):
             return
         self._mostrar_panel(True)
 
-        # --- texto del manual elegido: todavia no es una marca ---------------
+        # --- texto del documento elegido: todavia no es una marca ---------------
         if not marcas:
             self.pnl_titulo.config(text=t("pnl_texto_manual"))
             self.pnl_datos.config(text=t("pnl_caracteres_cita")
@@ -619,15 +889,15 @@ class Visor(ttk.Frame):
             ref = self._texto_referencia(uno)
             self.pnl_ref.config(state="normal")
             self.pnl_ref.delete(0, "end")
-            self.pnl_ref.insert(0, ref if ref else "(ninguna)")
+            self.pnl_ref.insert(0, ref if ref else t("pnl_ninguna"))
             self.pnl_ref.config(state="readonly",
                                 readonlybackground="#FFF6C9" if ref else "#ECEDEE")
             self.btn_quitar_ref.config(state="normal" if ref else "disabled")
             self.pnl_ref_bloque.pack(fill="x", padx=12, pady=(0, 10))
         else:
             dibujos = sum(1 for m in marcas if m["tipo"] == "lapiz")
-            self.pnl_titulo.config(text="%d marcas elegidas" % len(marcas))
-            self.pnl_datos.config(text=u"Pagina %d  \u00b7  %d dibujo(s), %d nota(s)"
+            self.pnl_titulo.config(text=t("pnl_n_marcas") % len(marcas))
+            self.pnl_datos.config(text=t("pnl_datos_varias")
                                   % (self.pno + 1, dibujos, len(marcas) - dibujos))
 
         self.pnl_color_bloque.pack(fill="x", padx=12, pady=(0, 10))
@@ -637,6 +907,8 @@ class Visor(ttk.Frame):
         self.pnl_acciones.pack(fill="x", padx=12, pady=(2, 0))
         if uno is not None and uno["tipo"] == "texto":
             self.btn_editar_nota.pack(fill="x", pady=(0, 3))
+            if uno.get("ancho"):
+                self.btn_ancho_auto.pack(fill="x", pady=(0, 3))
         if sum(1 for m in marcas if m["tipo"] == "lapiz") >= 2:
             self.btn_unificar.pack(fill="x", pady=(0, 3))
         self.btn_borrar.pack(fill="x", pady=(0, 3))
@@ -665,13 +937,27 @@ class Visor(ttk.Frame):
         if modo == "texto" and self.modo == "seleccionar" and self.comentar_seleccion():
             return          # habia una frase elegida: se comenta esa frase
         self._cerrar_editor(confirmar=True)
+        # Cambiar de herramienta abandona lo que estaba "por atarse". Antes, una
+        # frase elegida con "Comentar esta frase" y despues abandonada quedaba
+        # viva sin verse y se pegaba sola a la marca siguiente.
+        self.ancla_pendiente = None
+        self.refiriendo = []
         self.modo = modo
-        self.canvas.config(cursor={"dibujar": "pencil", "texto": "xterm",
-                                   "seleccionar": "arrow", "borrar": "dotbox"}[modo])
+        # Para marcar hay que ver lo que se marca: el ojito se vuelve a encender.
+        if modo in ("dibujar", "texto", "borrar") and not self.ver_marcas:
+            self.toggle_ver_marcas()
         if modo != "seleccionar":
             self._limpiar_seleccion()
+        self._aplicar_cursor()
         self._pintar_botones()
         self._actualizar_pie()
+
+    def _aplicar_cursor(self):
+        """Pone el cursor que corresponde al estado actual. Un solo lugar: antes
+        cada funcion ponia el suyo y alguno quedaba colgado (la mira de "elegir
+        referencia" seguia puesta despues de elegirla)."""
+        self._cursor_actual = "crosshair" if self.refiriendo else CURSORES[self.modo]
+        self.canvas.config(cursor=self._cursor_actual)
 
     def set_color(self, col):
         self.color = col
@@ -684,13 +970,19 @@ class Visor(ttk.Frame):
     def toggle_ver_marcas(self):
         """El "ojito": muestra u oculta las marcas propias sobre la hoja.
 
-        Sirve para leer el manual limpio un momento sin perder lo marcado: las
+        Sirve para leer el documento limpio un momento sin perder lo marcado: las
         marcas siguen ahi, solo se dejan de dibujar hasta volver a apretarlo.
         """
         self.ver_marcas = not self.ver_marcas
+        if not self.ver_marcas:
+            # Lo que no se ve no se toca: se suelta lo elegido y las marcas
+            # dejan de responder a clics y recuadros hasta volver a mostrarlas.
+            # Antes se podia agarrar y borrar un dibujo invisible.
+            self.seleccion = []
+            self._refrescar_panel()
         self.btn_ojo.config(
             relief="sunken" if self.ver_marcas else "raised",
-            text="\U0001F441  Marcas" if self.ver_marcas else "\U0001F441  (ocultas)")
+            text=t("ojo_marcas") if self.ver_marcas else t("ojo_ocultas"))
         self.render(self.canvas.yview()[0])
 
     # ------------------------------------------------------------ render ----
@@ -750,20 +1042,30 @@ class Visor(ttk.Frame):
         megapixeles = (rect.width * self.zoom) * (rect.height * self.zoom) / 1e6
         if megapixeles > 40:
             self.zoom = self.zoom * (40.0 / megapixeles) ** 0.5
-        pix = pagina.get_pixmap(matrix=pymupdf.Matrix(self.zoom, self.zoom), alpha=False)
-        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-        self.tkimg = ImageTk.PhotoImage(img)
+        # La imagen de la hoja se guarda y solo se vuelve a sacar del PDF cuando
+        # cambia la pagina, el zoom o el documento. Antes se rasterizaba en CADA
+        # movimiento del mouse al arrastrar una marca, y con zoom alto el
+        # arrastre iba a los tirones.
+        clave = (id(self.doc), self.pno, round(self.zoom, 5))
+        if getattr(self, "_clave_imagen", None) != clave or self.tkimg is None:
+            pix = pagina.get_pixmap(matrix=pymupdf.Matrix(self.zoom, self.zoom), alpha=False)
+            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            self.tkimg = ImageTk.PhotoImage(img)
+            self._tam_imagen = (pix.width, pix.height)
+            self._clave_imagen = clave
+        ancho_img, alto_img = self._tam_imagen
 
         ancho_vista = max(1, self.canvas.winfo_width())
-        self.ox = max(0, (ancho_vista - pix.width) // 2)
+        self.ox = max(0, (ancho_vista - ancho_img) // 2)
         self.oy = CUSHION_HOJA
 
         self.canvas.delete("all")
         self.canvas.create_image(self.ox, self.oy, anchor="nw", image=self.tkimg)
-        self.canvas.config(scrollregion=(0, 0, max(ancho_vista, pix.width + self.ox),
-                                         pix.height + 2 * CUSHION_HOJA))
+        self._region = (max(ancho_vista, ancho_img + self.ox), alto_img + 2 * CUSHION_HOJA)
+        self.canvas.config(scrollregion=(0, 0) + self._region)
         self._dibujar_marcas()
         self.canvas.yview_moveto(y_fraccion)
+        self.lbl_zoom.config(text="%d%%" % round(self.zoom * 72.0 / self._ppp() * 100))
         self._actualizar_numero()
         self._actualizar_pie()
 
@@ -793,7 +1095,7 @@ class Visor(ttk.Frame):
         return (px * self.zoom + self.ox, py * self.zoom + self.oy)
 
     def _dibujar_marcas(self):
-        # Primero el texto del manual resaltado, para que quede DEBAJO de las
+        # Primero el texto del documento resaltado, para que quede DEBAJO de las
         # marcas y no las tape.
         for r in self.palabras_sel:
             x0, y0 = self._a_canvas(r.x0, r.y0)
@@ -802,6 +1104,7 @@ class Visor(ttk.Frame):
                                          stipple="gray50", tags="seltexto")
         # El "ojito" apagado oculta las marcas propias, pero no la seleccion de
         # texto de arriba ni el recuadro de lo elegido: eso es la interaccion.
+        self._cajas_notas = {}
         if self.ver_marcas:
             for i, marca in enumerate(self.marcas.get(self.pno, [])):
                 self._dibujar_marca(marca, i)
@@ -830,11 +1133,16 @@ class Visor(ttk.Frame):
             r = self._bbox(marca)
             x0, y0 = self._a_canvas(r.x0, r.y0)
             x1, y1 = self._a_canvas(r.x1, r.y1)
-            # Un halo azul tenue relleno detras: hace que lo elegido SALTE a la
-            # vista, no solo un contorno fino que se pierde entre las marcas.
-            self.canvas.create_rectangle(x0 - 5, y0 - 5, x1 + 5, y1 + 5,
-                                         fill="#4DA3FF", outline="", stipple="gray25",
-                                         tags="seleccion")
+            if i in self._cajas_notas:          # la caja tal como se ve en pantalla
+                x0, y0, x1, y1 = self._cajas_notas[i]
+            # Un halo azul DETRAS de la marca: hace que lo elegido salte a la
+            # vista sin ensuciarlo (antes iba encima y tramaba el texto de la
+            # nota). Queda arriba de la hoja y abajo de todas las marcas.
+            halo = self.canvas.create_rectangle(x0 - 7, y0 - 7, x1 + 7, y1 + 7,
+                                                fill="#9CC8F5", outline="",
+                                                tags="seleccion")
+            if self.canvas.find_withtag("marca"):
+                self.canvas.tag_lower(halo, "marca")
             self.canvas.create_rectangle(x0 - 4, y0 - 4, x1 + 4, y1 + 4,
                                          outline="#1971C2", width=2, dash=(4, 3),
                                          tags="seleccion")
@@ -843,16 +1151,26 @@ class Visor(ttk.Frame):
                 self.canvas.create_rectangle(ex - 3, ey - 3, ex + 3, ey + 3,
                                              fill="#1971C2", outline="white",
                                              tags="seleccion")
+            # Una nota sola elegida: manija en el borde derecho para cambiarle
+            # el ancho (ver _manija_nota). Mientras se arrastra, una linea
+            # punteada muestra el tope elegido; la caja se ajusta al texto.
+            if marca["tipo"] == "texto" and len(self.seleccion) == 1:
+                mx, my = self._manija_nota(marca, i)
+                self.canvas.create_rectangle(mx - 3, my - 9, mx + 3, my + 9,
+                                             fill="white", outline="#1971C2", width=2,
+                                             tags="seleccion")
+                if self._redimensionando is not None and marca.get("ancho"):
+                    gx = self._a_canvas(marca["x"] + marca["ancho"], 0)[0]
+                    self.canvas.create_line(gx, y0 - 10, gx, y1 + 10, fill="#1971C2",
+                                            dash=(3, 3), tags="seleccion")
             # Si lo elegido esta atado a una frase, una flecha marcada apunta
             # desde la marca HACIA esa frase, para ver de un vistazo a que se
             # refiere sin leer el panel.
             ancla = marca.get("ancla")
-            if ancla and ancla.get("rects"):
-                rr = ancla["rects"][0]
-                ex, ey = self._a_canvas((rr[0] + rr[2]) / 2.0, rr[3])
-                sx, sy = self._a_canvas((r.x0 + r.x1) / 2.0, r.y0)
+            puntos = self._conector(marca, ancla) if ancla else None
+            if puntos:
                 self.canvas.create_line(
-                    sx, sy, ex, ey, fill="#E8A200",
+                    *puntos, fill="#E8A200",
                     width=max(2, int(round(2.4 * self.zoom))),
                     arrow="last", arrowshape=(12, 15, 5), tags="seleccion")
 
@@ -877,24 +1195,108 @@ class Visor(ttk.Frame):
                 # El subrayado de la frase atada, y una linea fina desde la
                 # frase hasta la nota para que se vea de que cuelga.
                 self._dibujar_subrayado(ancla, tag)
-                r0 = ancla["rects"][0] if ancla.get("rects") else None
-                if r0:
-                    lx, ly = self._a_canvas((r0[0] + r0[2]) / 2.0, r0[3])
-                    nx, ny = self._a_canvas(marca["x"] + 8, marca["y"])
+                puntos = self._conector(marca, ancla)
+                if puntos:
                     self.canvas.create_line(
-                        lx, ly, nx, ny,
+                        *puntos,
                         fill=a_hex(mezclar(A.COLOR_ANCLA, A.OPACIDAD_ANCLA)),
                         width=max(1, int(1.2 * self.zoom)), tags=("marca", tag))
-            rect = A.rect_nota(marca["x"], marca["y"], marca["texto"])
+            rect = A.rect_nota(marca["x"], marca["y"], marca["texto"], marca.get("ancho"))
             x0, y0 = self._a_canvas(rect.x0, rect.y0)
-            x1, y1 = self._a_canvas(rect.x1, rect.y1)
-            self.canvas.create_rectangle(x0, y0, x1, y1, fill=a_hex(A.FONDO_NOTA),
-                                         outline=col, width=1, tags=("marca", tag))
-            self.canvas.create_text(
-                x0 + 3, y0 + 2, text=marca["texto"], anchor="nw", fill=col,
-                width=max(10, (x1 - x0) - 6),
-                font=("Helvetica", max(6, int(round(A.CUERPO_NOTA * self.zoom)))),
-                tags=("marca", tag))
+            _x1, y1 = self._a_canvas(rect.x1, rect.y1)
+            # El texto va renglon por renglon, con el MISMO corte que usa el PDF
+            # guardado (A.lineas_nota) y la letra en pixeles (tamano negativo en
+            # Tk). Si se dejara que Tk corte solo y con tamano en puntos, Windows
+            # agranda la letra y el segundo renglon se sale del recuadro.
+            pad = A.PAD_NOTA * self.zoom
+            fuente = ("Helvetica", -max(6, int(round(A.CUERPO_NOTA * self.zoom))))
+            tag_txt = tag + "txt"
+            for k, linea in enumerate(A.lineas_nota(marca["texto"], marca.get("ancho"))):
+                self.canvas.create_text(
+                    x0 + pad, y0 + A.tope_renglon(k) * self.zoom, text=linea,
+                    anchor="nw", fill=col, font=fuente, tags=("marca", tag, tag_txt))
+            # La caja se arma alrededor del texto YA DIBUJADO, no de la medida del
+            # PDF: en pantalla la letra sale un poco mas angosta (Windows redondea
+            # el tamano) y medida "de libro" quedaba un hueco vacio a la derecha.
+            caja = self.canvas.bbox(tag_txt)
+            x1 = max(x0 + A.ANCHO_MIN_NOTA * self.zoom, (caja[2] if caja else x0) + pad)
+            fondo = self.canvas.create_rectangle(x0, y0, x1, y1, fill=a_hex(A.FONDO_NOTA),
+                                                 outline=col, width=1, tags=("marca", tag))
+            self.canvas.tag_lower(fondo, tag_txt)
+            self._cajas_notas[i] = (x0, y0, x1, y1)
+
+    def _manija_nota(self, marca, i=None):
+        """Punto (en el canvas) de la manija que cambia el ancho de una nota."""
+        if i in self._cajas_notas:
+            _x0, y0, x1, y1 = self._cajas_notas[i]
+        else:
+            r = self._bbox(marca)
+            x1, y0 = self._a_canvas(r.x1, r.y0)
+            _x, y1 = self._a_canvas(r.x1, r.y1)
+        return x1 + 4, (y0 + y1) / 2.0
+
+    def _sobre_manija(self, e):
+        """Indice de la nota elegida si el mouse esta sobre su manija, o None."""
+        if self.modo != "seleccionar" or len(self.seleccion) != 1:
+            return None
+        lista = self.marcas.get(self.pno, [])
+        i = self.seleccion[0]
+        if not (0 <= i < len(lista)) or lista[i]["tipo"] != "texto":
+            return None
+        mx, my = self._manija_nota(lista[i], i)
+        cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
+        return i if abs(cx - mx) <= 7 and abs(cy - my) <= 12 else None
+
+    def _al_mover_mouse(self, e):
+        """Sin apretar nada, el cursor avisa que hay debajo (en Seleccionar).
+
+        Flecha doble sobre la manija de una nota, cruz de mover sobre una marca,
+        cursor de texto sobre el texto del documento. Asi se sabe que va a pasar
+        antes de hacer clic, como en cualquier editor.
+        """
+        if self._pan or self._redimensionando is not None or self._rts:
+            return
+        cursor = "crosshair" if self.refiriendo else CURSORES[self.modo]
+        if self.modo == "seleccionar" and not self.refiriendo:
+            punto = self._a_pdf(e.x, e.y)
+            if self._sobre_manija(e) is not None:
+                cursor = "sb_h_double_arrow"
+            elif self._marca_en(punto) is not None:
+                cursor = "fleur"
+            elif self._palabra_en(punto):
+                cursor = "xterm"
+        if cursor != self._cursor_actual:
+            self._cursor_actual = cursor
+            self.canvas.config(cursor=cursor)
+
+    def _palabra_en(self, punto):
+        """True si hay una palabra del documento justo debajo del punto."""
+        px, py = punto
+        return any(w[0] <= px <= w[2] and w[1] <= py <= w[3]
+                   for w in self._palabras_pagina())
+
+    def _conector(self, marca, ancla):
+        """Puntos (x0, y0, x1, y1) de la linea que une una marca con su frase.
+
+        Sale del BORDE de la marca que mira a la frase y llega al borde de la
+        frase: asi la linea nunca atraviesa el texto de la nota.
+        """
+        rects = ancla.get("rects") or []
+        if not rects:
+            return None
+        fx0 = min(r[0] for r in rects)
+        fy0 = min(r[1] for r in rects)
+        fx1 = max(r[2] for r in rects)
+        fy1 = max(r[3] for r in rects)
+        b = self._bbox(marca)
+        cx, cy = (b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0
+        # Punto de la frase mas cercano a la marca, y punto de la marca mas
+        # cercano a ese.
+        ex, ey = min(max(cx, fx0), fx1), min(max(cy, fy0), fy1)
+        sx, sy = min(max(ex, b.x0), b.x1), min(max(ey, b.y0), b.y1)
+        if abs(sx - ex) < 0.5 and abs(sy - ey) < 0.5:
+            return None         # la marca esta encima de la frase: no hace falta linea
+        return self._a_canvas(sx, sy) + self._a_canvas(ex, ey)
 
     # -------------------------------------------------------------- mouse ----
 
@@ -907,9 +1309,19 @@ class Visor(ttk.Frame):
             self._trazo = [self._a_pdf(e.x, e.y)]
             self._tmp = []
         elif self.modo == "texto":
-            self._abrir_editor(self._a_pdf(e.x, e.y))
+            punto = self._a_pdf(e.x, e.y)
+            i = self._marca_en(punto)
+            if (i is not None and not self.ancla_pendiente
+                    and self.marcas[self.pno][i]["tipo"] == "texto"):
+                # Clic sobre una nota que ya existe: se edita esa, en vez de
+                # abrir otra encima (como en cualquier editor).
+                self.seleccion = [i]
+                self._editar_nota_seleccionada()
+                return
+            self._abrir_editor(punto)
         elif self.modo == "seleccionar":
-            self._click_seleccionar(e, sumando=bool(e.state & 0x0004))
+            # Ctrl+clic o Shift+clic suman a la seleccion (Shift es lo de Windows).
+            self._click_seleccionar(e, sumando=bool(e.state & 0x0005))
         elif self.modo == "borrar":
             self._borrar_en(self._a_pdf(e.x, e.y))
 
@@ -951,8 +1363,9 @@ class Visor(ttk.Frame):
         if self.modo != "dibujar" or self._trazo is None:
             return
         trazo, self._trazo = self._trazo, None
-        for t in self._tmp:
-            self.canvas.delete(t)
+        # Ojo: la variable NO puede llamarse "t", que es la funcion de idiomas.
+        for linea_tmp in self._tmp:
+            self.canvas.delete(linea_tmp)
         self._tmp = []
         if len(trazo) < 2:
             return          # un clic suelto no deja nada
@@ -987,8 +1400,7 @@ class Visor(ttk.Frame):
 
     def _pan_fin(self, _e):
         self._pan = None
-        self.canvas.config(cursor={"dibujar": "pencil", "texto": "xterm",
-                                   "seleccionar": "arrow", "borrar": "dotbox"}[self.modo])
+        self._aplicar_cursor()
 
     # ----------------------------------------------- seleccion por area (RTS) --
 
@@ -1024,39 +1436,118 @@ class Visor(ttk.Frame):
         area = pymupdf.Rect(min(p0[0], p1[0]), min(p0[1], p1[1]),
                             max(p0[0], p1[0]), max(p0[1], p1[1]))
         if area.width < 2 and area.height < 2:
-            return          # un clic derecho suelto no selecciona nada
-        # Pasar a Seleccionar y agarrar todas las marcas que toque el area.
-        lista = self.marcas.get(self.pno, [])
+            # Clic derecho sin arrastrar: el menu de siempre, con lo que se
+            # puede hacer con lo que hay debajo del mouse.
+            self._menu_contextual(e, p1)
+            return
+        # Pasar a Seleccionar y agarrar todas las marcas que toque el area (las
+        # ocultas por el ojito no cuentan: lo que no se ve no se toca).
+        lista = self.marcas.get(self.pno, []) if self.ver_marcas else []
         elegidas = [i for i, mk in enumerate(lista) if self._bbox(mk).intersects(area)]
+        self.ancla_pendiente = None
+        self.refiriendo = []
         self.modo = "seleccionar"
-        self.canvas.config(cursor="arrow")
+        self._aplicar_cursor()
         self._pintar_botones()
         if elegidas:
             self.seleccion = elegidas
             self.palabras_sel = []
             self._texto_sel = ""
         else:
-            # Ninguna marca en el area: entonces se elige el TEXTO del manual que
-            # cae ahi, igual que arrastrando en modo Seleccionar.
+            # Ninguna marca en el area: se eligen las palabras del documento
+            # que quedan DENTRO del recuadro (antes tomaba todo lo que habia
+            # entre dos palabras en orden de lectura, y un recuadro en el
+            # margen agarraba texto que no tocaba).
             self._limpiar_seleccion()
-            self._seleccionar_texto(p0, p1)
+            self._elegir_palabras_en(area)
         self.render(self.canvas.yview()[0])
         self._refrescar_panel()
 
+    def _elegir_palabras_en(self, area):
+        """Elige las palabras del documento cuyo recuadro toca el area."""
+        elegidas = [w for w in self._palabras_pagina()
+                    if pymupdf.Rect(w[:4]).intersects(area)]
+        self.palabras_sel = [pymupdf.Rect(w[:4]) for w in elegidas]
+        self._texto_sel = " ".join(w[4] for w in elegidas)
+
+    def _menu_contextual(self, e, punto):
+        """Menu del clic derecho: acciones sobre lo que hay debajo del mouse."""
+        menu = tk.Menu(self, tearoff=0)
+        i = self._marca_en(punto)
+        if i is not None:
+            if i not in self.seleccion:
+                self.modo = "seleccionar"
+                self.seleccion = [i]
+                self.palabras_sel = []
+                self._texto_sel = ""
+                self._aplicar_cursor()
+                self._pintar_botones()
+                self.render(self.canvas.yview()[0])
+                self._refrescar_panel()
+            if self.marcas[self.pno][i]["tipo"] == "texto" and len(self.seleccion) == 1:
+                menu.add_command(label=t("pnl_editar_texto"),
+                                 command=self._editar_nota_seleccionada)
+            menu.add_command(label=t("pnl_borrar"), command=self._borrar_seleccion)
+            menu.add_command(label=t("pnl_soltar"), command=self._soltar_todo)
+        elif self._texto_sel:
+            menu.add_command(label=t("menu_copiar"), command=self.copiar_texto)
+            menu.add_command(label=t("pnl_comentar"), command=self.comentar_seleccion)
+            menu.add_command(label=t("pnl_dibujar_sobre"),
+                             command=self.dibujar_sobre_seleccion)
+        else:
+            menu.add_command(label=t("menu_nota_aca"),
+                             command=lambda: self._abrir_editor(punto))
+            if self.marcas.get(self.pno):
+                menu.add_command(label=t("menu_seleccionar_todo"),
+                                 command=self.seleccionar_todo)
+        try:
+            menu.tk_popup(getattr(e, "x_root", 0), getattr(e, "y_root", 0))
+        finally:
+            menu.grab_release()
+
     def _rueda(self, e):
-        if e.state & 0x0004:        # Ctrl: zoom
-            self.set_zoom(self.zoom * (1.1 if e.delta > 0 else 1 / 1.1))
+        if e.state & 0x0004:        # Ctrl: zoom hacia donde apunta el mouse
+            self._zoom_hacia(e, 1.1 if e.delta > 0 else 1 / 1.1)
             return
         pasos = 1 if e.delta < 0 else -1
         prim, ult = self.canvas.yview()
         # Pasar de pagina solo si YA se estaba en el borde antes de este tiron.
         if pasos > 0 and ult >= 0.9999:
-            self.ir_pagina(self.pno + 1, y=0.0)
+            if self._puede_saltar(1):
+                self.ir_pagina(self.pno + 1, y=0.0)
             return
         if pasos < 0 and prim <= 0.0001:
-            self.ir_pagina(self.pno - 1, y=1.0)
+            if self._puede_saltar(-1):
+                self.ir_pagina(self.pno - 1, y=1.0)
             return
         self.canvas.yview_scroll(pasos * 3, "units")
+
+    def _puede_saltar(self, direccion):
+        """Un salto de pagina por vez con la rueda.
+
+        Un touchpad o una rueda libre mandan muchos eventos seguidos: sin esto,
+        un solo gesto saltaba varias paginas. Cambiar de direccion si se puede
+        enseguida.
+        """
+        import time
+        ahora = time.monotonic()
+        antes_dir, antes_t = self._ultimo_salto
+        if antes_dir == direccion and ahora - antes_t < 0.45:
+            return False
+        self._ultimo_salto = (direccion, ahora)
+        return True
+
+    def _zoom_hacia(self, e, factor):
+        """Ctrl+rueda: acercar dejando quieto el punto del papel bajo el mouse,
+        como en Acrobat o en un navegador (antes acercaba hacia la izquierda)."""
+        px, py = self._a_pdf(e.x, e.y)
+        self.set_zoom(self.zoom * factor)
+        cx, cy = self._a_canvas(px, py)
+        ancho, alto = self._region
+        if ancho > 0:
+            self.canvas.xview_moveto(max(0.0, cx - e.x) / ancho)
+        if alto > 0:
+            self.canvas.yview_moveto(max(0.0, cy - e.y) / alto)
 
     def _rueda_horizontal(self, e):
         self.canvas.xview_scroll(1 if e.delta < 0 else -1, "units")
@@ -1085,21 +1576,19 @@ class Visor(ttk.Frame):
     def _bbox(self, marca):
         if marca["tipo"] == "lapiz":
             return A.bbox_trazo(marca["trazos"], marca.get("grosor", GROSOR_FINO))
-        return A.rect_nota(marca["x"], marca["y"], marca["texto"])
+        return A.rect_nota(marca["x"], marca["y"], marca["texto"], marca.get("ancho"))
 
     def _borrar_en(self, punto):
-        lista = self.marcas.get(self.pno, [])
-        px, py = punto
-        tol = 4.0 / max(0.2, self.zoom)     # margen generoso para trazos finos
-        for i in range(len(lista) - 1, -1, -1):   # de arriba hacia abajo
-            r = self._bbox(lista[i])
-            if (r.x0 - tol) <= px <= (r.x1 + tol) and (r.y0 - tol) <= py <= (r.y1 + tol):
-                self._instantanea()
-                lista.pop(i)
-                self._limpiar_seleccion()
-                self.render(self.canvas.yview()[0])
-                self._marcar_sucio()
-                return
+        # Misma prueba que para elegir: se borra lo que esta bajo el mouse, y un
+        # dibujo solo si el clic cae sobre su trazo.
+        i = self._marca_en(punto)
+        if i is None:
+            return
+        self._instantanea()
+        self.marcas[self.pno].pop(i)
+        self._limpiar_seleccion()
+        self.render(self.canvas.yview()[0])
+        self._marcar_sucio()
 
     def _volver_a(self, pila, otra):
         """Motor comun de deshacer y rehacer: saca de una pila y apila en la otra."""
@@ -1149,17 +1638,33 @@ class Visor(ttk.Frame):
         Se recorre de la ultima a la primera: si hay marcas encimadas, agarra la
         de arriba, que es la que el ojo ve.
         """
+        if not self.ver_marcas:
+            return None     # con el ojito apagado, lo que no se ve no se toca
         px, py = punto
         lista = self.marcas.get(self.pno, [])
-        tol = 4.0 / max(0.2, self.zoom)
+        tol = 5.0 / max(0.2, self.zoom)
         for i in range(len(lista) - 1, -1, -1):
-            r = self._bbox(lista[i])
-            if (r.x0 - tol) <= px <= (r.x1 + tol) and (r.y0 - tol) <= py <= (r.y1 + tol):
+            mk = lista[i]
+            r = self._bbox(mk)
+            if not ((r.x0 - tol) <= px <= (r.x1 + tol) and (r.y0 - tol) <= py <= (r.y1 + tol)):
+                continue
+            if mk["tipo"] == "texto":
+                return i
+            # Un dibujo se toca por su TRAZO, no por el recuadro que lo
+            # envuelve: si no, despues de encerrar un parrafo en un circulo no
+            # habia forma de elegir el texto de adentro.
+            if _cerca_del_trazo(px, py, mk["trazos"], tol + mk.get("grosor", GROSOR_FINO) / 2.0):
                 return i
         return None
 
     def _click_seleccionar(self, e, sumando=False):
         punto = self._a_pdf(e.x, e.y)
+        # La manija de ancho va primero: esta pegada al borde de la nota y, si
+        # no, el clic se tomaria como "agarrar la nota para moverla".
+        manija = None if (sumando or self.refiriendo) else self._sobre_manija(e)
+        if manija is not None:
+            self._redimensionando = {"i": manija, "movido": False}
+            return
         i = self._marca_en(punto)
         if self.refiriendo:
             # Se esta eligiendo a que se refiere una marca: un clic sobre otra
@@ -1170,7 +1675,11 @@ class Visor(ttk.Frame):
                 otra = lista[i]
                 nombre = otra.get("nombre") or A.nombre_por_defecto(
                     otra["tipo"], self.pno, i)
-                self._asignar_referencia(nombre=nombre)
+                # El nombre queda FIJO en la otra marca: el nombre por defecto
+                # depende del lugar en la lista, y si despues se borraba una
+                # marca anterior la referencia pasaba a apuntar a otra.
+                otra["nombre"] = self._nombre_libre(nombre, otra)
+                self._asignar_referencia(nombre=otra["nombre"])
                 return
             if i is not None:
                 return      # clic sobre si misma: se ignora
@@ -1201,6 +1710,9 @@ class Visor(ttk.Frame):
 
     def _arrastre_seleccionar(self, e):
         punto = self._a_pdf(e.x, e.y)
+        if self._redimensionando is not None:
+            self._cambiar_ancho_nota(punto[0])
+            return
         if self._arrastrando is not None and self.seleccion:
             if not self._arrastrando["movido"]:
                 self._instantanea()          # una sola instantanea por movimiento
@@ -1216,6 +1728,14 @@ class Visor(ttk.Frame):
             self.render(self.canvas.yview()[0])
 
     def _soltar_seleccionar(self, _e):
+        if self._redimensionando is not None:
+            movido = self._redimensionando["movido"]
+            self._redimensionando = None
+            if movido:
+                self._marcar_sucio()
+            self.render(self.canvas.yview()[0])
+            self._refrescar_panel()
+            return
         if self.refiriendo and self._texto_sel and self.palabras_sel:
             self._marco_sel = None
             self._asignar_referencia(ancla={
@@ -1229,17 +1749,99 @@ class Visor(ttk.Frame):
         self._marco_sel = None
         self._refrescar_panel()
 
+    def _cambiar_ancho_nota(self, x_pdf):
+        """Arrastrando la manija: el borde derecho de la nota va hasta x_pdf.
+
+        Lo que se guarda es el TOPE del ancho (clave "ancho"): la caja sigue
+        ajustada al texto, asi que ensanchar "desenrolla" renglones hasta que la
+        nota entra en uno solo, y angostar la parte en mas renglones. Nunca se
+        sale de la hoja.
+        """
+        datos = self._redimensionando
+        lista = self.marcas.get(self.pno, [])
+        if not (0 <= datos["i"] < len(lista)):
+            return
+        mk = lista[datos["i"]]
+        tope_hoja = max(A.ANCHO_MIN_NOTA, self._pagina().rect.width - mk["x"])
+        ancho = min(max(A.ANCHO_MIN_NOTA, x_pdf - mk["x"]), tope_hoja)
+        if abs(ancho - (mk.get("ancho") or 0)) < 0.5:
+            return
+        if not datos["movido"]:
+            self._instantanea()             # una sola instantanea por arrastre
+            datos["movido"] = True
+        mk["ancho"] = ancho
+        self.render(self.canvas.yview()[0])
+
+    def empujar_seleccion(self, dx, dy):
+        """Flechas del teclado con algo elegido: moverlo de a poquito."""
+        if not self.seleccion:
+            return
+        self._instantanea()
+        self._mover_seleccion(dx, dy)
+        self.render(self.canvas.yview()[0])
+        self._marcar_sucio()
+
+    def seleccionar_todo(self):
+        """Ctrl+A: elegir todas las marcas de la pagina."""
+        lista = self.marcas.get(self.pno, [])
+        if not lista:
+            return
+        if self.modo != "seleccionar":
+            self.set_modo("seleccionar")
+        self.seleccion = list(range(len(lista)))
+        self.palabras_sel = []
+        self._texto_sel = ""
+        self.render(self.canvas.yview()[0])
+        self._refrescar_panel()
+
+    def zoom_real(self):
+        """Ctrl+1: tamano real (una pulgada del papel = una pulgada de pantalla)."""
+        self.set_zoom(self._ppp() / 72.0)
+
+    def _ppp(self):
+        """Puntos por pulgada de la pantalla (96 sin escalado de Windows)."""
+        try:
+            return float(self.winfo_fpixels("1i")) or 96.0
+        except Exception:
+            return 96.0
+
+    def ancho_automatico(self):
+        """Boton del panel: la nota vuelve al ancho de siempre (tope ANCHO_NOTA)."""
+        marcas = [m for m in self._marcas_seleccionadas()
+                  if m["tipo"] == "texto" and m.get("ancho")]
+        if not marcas:
+            return
+        self._instantanea()
+        for mk in marcas:
+            mk.pop("ancho", None)
+        self.render(self.canvas.yview()[0])
+        self._marcar_sucio()
+        self._refrescar_panel()
+
     def _mover_seleccion(self, dx, dy):
-        rect = self._pagina().rect
+        # Nada se va de la hoja: una marca fuera del papel llega cortada en el
+        # PDF y el agente no la ve entera. Se usa el tamano REAL de cada marca
+        # (antes una nota de varios renglones se podia sacar por abajo).
+        # El limite solo impide salirse MAS: una marca que ya estaba afuera
+        # (dibujada en el margen gris) se puede traer para adentro, pero no
+        # salta de golpe al primer movimiento.
+        hoja = self._pagina().rect
         for mk in self._marcas_seleccionadas():
+            r = self._bbox(mk)
+            mx = min(max(dx, min(0.0, -r.x0)), max(0.0, hoja.width - r.x1))
+            my = min(max(dy, min(0.0, -r.y0)), max(0.0, hoja.height - r.y1))
             if mk["tipo"] == "lapiz":
-                mk["trazos"] = [[(x + dx, y + dy) for (x, y) in t] for t in mk["trazos"]]
+                mk["trazos"] = [[(x + mx, y + my) for (x, y) in tr] for tr in mk["trazos"]]
             else:
-                # Que no se vaya de la hoja: una nota fuera del papel llega
-                # cortada en el PDF y el agente no la ve entera.
-                ancho_mk = A.rect_nota(mk["x"], mk["y"], mk["texto"]).width
-                mk["x"] = min(max(0.0, mk["x"] + dx), max(0.0, rect.width - ancho_mk))
-                mk["y"] = min(max(0.0, mk["y"] + dy), max(0.0, rect.height - A.ALTO_LINEA))
+                mk["x"] += mx
+                mk["y"] += my
+
+    def _encajar_nota(self, mk):
+        """Corre una nota hacia adentro si con su tamano real se sale de la hoja."""
+        hoja = self._pagina().rect
+        r = self._bbox(mk)
+        mk["x"] = max(0.0, min(mk["x"], hoja.width - r.width))
+        mk["y"] = max(0.0, min(mk["y"], hoja.height - r.height))
 
     # --- texto del PDF original -------------------------------------------
 
@@ -1250,7 +1852,7 @@ class Visor(ttk.Frame):
         return self._cache_palabras
 
     def _seleccionar_texto(self, desde, hasta):
-        """Selecciona el texto del manual entre dos puntos, en orden de lectura."""
+        """Selecciona el texto del documento entre dos puntos, en orden de lectura."""
         palabras = self._palabras_pagina()
         if not palabras:
             return
@@ -1282,54 +1884,52 @@ class Visor(ttk.Frame):
         """Dejar lista una nota que va a quedar atada a la frase elegida.
 
         No abre el cuadro de texto en un lugar elegido por el programa: pasa a
-        modo Texto y espera a que David haga clic donde la quiere. La nota que
+        modo Texto y espera a que el usuario haga clic donde la quiere. La nota que
         escriba ahi queda atada a esta frase, se ponga donde se ponga.
         """
-        if not self.palabras_sel or not self._texto_sel:
-            return False
-        self.ancla_pendiente = {
-            "rects": [(r.x0, r.y0, r.x1, r.y1) for r in self.palabras_sel],
-            "cita": self._texto_sel,
-        }
-        cita = self._texto_sel
-        self._limpiar_seleccion()
-        self.modo = "texto"
-        self.canvas.config(cursor="xterm")
-        self._pintar_botones()
-        self.render(self.canvas.yview()[0])
-        self.pie.config(text=t("pie_comentar") % cita[:80])
-        return True
+        return self._preparar_ancla("texto", "pie_comentar")
 
     def dibujar_sobre_seleccion(self):
         """Igual que comentar, pero lo que sigue es un dibujo en vez de una nota."""
+        return self._preparar_ancla("dibujar", "pie_dibujar")
+
+    def _preparar_ancla(self, modo, clave_pie):
+        """Deja la frase elegida esperando a la proxima marca, y pasa a 'modo'."""
         if not self.palabras_sel or not self._texto_sel:
             return False
+        self._cerrar_editor(confirmar=True)
+        self.refiriendo = []
         self.ancla_pendiente = {
             "rects": [(r.x0, r.y0, r.x1, r.y1) for r in self.palabras_sel],
             "cita": self._texto_sel,
         }
         cita = self._texto_sel
         self._limpiar_seleccion()
-        self.modo = "dibujar"
-        self.canvas.config(cursor="pencil")
+        self.modo = modo
+        if not self.ver_marcas:
+            self.toggle_ver_marcas()
+        self._aplicar_cursor()
         self._pintar_botones()
         self.render(self.canvas.yview()[0])
-        self.pie.config(text=t("pie_dibujar") % cita[:80])
+        self.pie.config(text=t(clave_pie) % cita[:80])
         return True
 
     def elegir_referencia(self):
         """Empezar a elegir a que se refiere la marca que esta seleccionada.
 
         Despues de tocar "Elegir", lo que se marque pasa a ser la referencia:
-        una frase del manual (arrastrando sobre el texto) o una marca que ya
+        una frase del documento (arrastrando sobre el texto) o una marca que ya
         exista (haciendole clic).
         """
         if not self.seleccion:
             return
+        self.ancla_pendiente = None
         self.refiriendo = list(self.seleccion)
         self._limpiar_seleccion()
         self.modo = "seleccionar"
-        self.canvas.config(cursor="hand2")
+        # Mira (crosshair): "apunta a lo que queres referenciar". La manito
+        # queda solo para arrastrar la hoja, asi no se confunden.
+        self._aplicar_cursor()
         self._pintar_botones()
         self.render(self.canvas.yview()[0])
         self.pie.config(text=t("pie_elegir_ref"))
@@ -1355,6 +1955,7 @@ class Visor(ttk.Frame):
         self.seleccion = [i for i in objetivo if 0 <= i < len(lista)]
         self.palabras_sel = []
         self._texto_sel = ""
+        self._aplicar_cursor()
         self.render(self.canvas.yview()[0])
         self._marcar_sucio()
         self._refrescar_panel()
@@ -1366,6 +1967,7 @@ class Visor(ttk.Frame):
         self.ancla_pendiente = None
         self.refiriendo = []
         if algo:
+            self._aplicar_cursor()
             self._actualizar_pie()
         return algo
 
@@ -1384,7 +1986,7 @@ class Visor(ttk.Frame):
         self._refrescar_panel()
 
     def copiar_texto(self):
-        """Ctrl+C: manda al portapapeles el texto del manual seleccionado."""
+        """Ctrl+C: manda al portapapeles el texto del documento seleccionado."""
         if not self._texto_sel:
             return
         self.app.clipboard_clear()
@@ -1402,10 +2004,24 @@ class Visor(ttk.Frame):
         if not nuevo:
             self._refrescar_panel()
             return
+        # Sin nombres repetidos: dos marcas con el mismo nombre se confundian
+        # al reabrir (la frase de una terminaba en la otra).
+        nuevo = self._nombre_libre(nuevo, marcas[0])
         self._instantanea()
         marcas[0]["nombre"] = nuevo
+        self._refrescar_panel()
         self._marcar_sucio()
         self.pie.config(text=t("pie_renombrado") % nuevo)
+
+    def _nombre_libre(self, nombre, propia):
+        """'nombre' si ninguna otra marca lo usa; si no, 'nombre-2', '-3'..."""
+        usados = {mk.get("nombre") for lista in self.marcas.values()
+                  for mk in lista if mk is not propia}
+        libre, n = nombre, 2
+        while libre in usados:
+            libre = "%s-%d" % (nombre, n)
+            n += 1
+        return libre
 
     def _cambiar_color(self, col):
         marcas = self._marcas_seleccionadas()
@@ -1449,6 +2065,12 @@ class Visor(ttk.Frame):
             "grosor": partes[0].get("grosor", GROSOR_FINO),
             "nombre": partes[0].get("nombre", ""),
         }
+        # Si alguna parte estaba atada a una frase o a otra marca, el dibujo
+        # unido lo hereda (antes se perdia al unificar).
+        for clave in ("ancla", "ref"):
+            valor = next((mk[clave] for mk in partes if mk.get(clave)), None)
+            if valor:
+                unido[clave] = valor
         for i in reversed(indices):
             lista.pop(i)
         lista.insert(indices[0], unido)
@@ -1477,39 +2099,73 @@ class Visor(ttk.Frame):
             return
         mk = marcas[0]
         self._instantanea()
-        self.marcas[self.pno].remove(mk)
+        lista = self.marcas[self.pno]
+        indice = lista.index(mk)
+        lista.pop(indice)
         self._limpiar_seleccion()
         self.render(self.canvas.yview()[0])
-        self.color = mk["color"]
+        # Se pasa TODO lo que la nota era (frase atada, referencia, color, lugar
+        # en la lista): antes, editar una nota atada a una frase le borraba la
+        # frase, y cancelar la edicion borraba la nota entera.
         self._abrir_editor((mk["x"], mk["y"]), texto=mk.get("texto", ""),
-                           nombre=mk.get("nombre", ""))
+                           nombre=mk.get("nombre", ""), ancla=mk.get("ancla"),
+                           original=(indice, mk))
 
     def mostrar_ayuda(self):
         ayuda.Ventana(self.app, ruta_errores=errores.ARCHIVO)
 
     # ---------------------------------------------------- editor de texto ----
 
-    def _abrir_editor(self, punto, texto="", nombre="", ancla=None):
+    def _abrir_editor(self, punto, texto="", nombre="", ancla=None, original=None):
+        # original = (indice, marca) cuando se edita una nota que ya existia:
+        # sirve para devolverla tal cual si se cancela, y para conservar su
+        # color, su referencia y su lugar en la lista al confirmar.
+        self._editor_original = original
+        self._editor_color = original[1]["color"] if original else self.color
+        self._editor_ancho = original[1].get("ancho") if original else None
+        # La frase que estaba esperando (Comentar esta frase) se toma ACA, al
+        # abrir el cuadro: si despues la nota queda vacia, la frase no queda
+        # viva para pegarse a la marca siguiente.
+        if ancla is None and original is None:
+            ancla = self.ancla_pendiente
+        self.ancla_pendiente = None
         # Que la nota entre entera en la hoja. Si se hace clic cerca del borde
         # derecho, sin esto el cuadro de escribir se sale de la ventana (se
         # escribe a ciegas) y la nota queda con medio texto fuera de la pagina,
-        # cortado en el PDF que recibe el agente. Se corre hacia adentro.
+        # cortado en el PDF que recibe el agente. Se corre hacia adentro. Una
+        # nota que ya existe se mide con su tamano real (antes, editar una nota
+        # corta pegada al borde la hacia saltar a la izquierda).
         rect = self._pagina().rect
-        x = min(max(2.0, punto[0]), max(2.0, rect.width - A.ANCHO_NOTA - 2.0))
-        y = min(max(2.0, punto[1]), max(2.0, rect.height - A.ALTO_LINEA - 6.0))
+        if original is not None:
+            caja = self._bbox(original[1])
+            ancho_caja, alto_caja = caja.width, caja.height
+        else:
+            ancho_caja, alto_caja = A.ANCHO_NOTA, A.ALTO_LINEA + 6.0
+        x = min(max(2.0, punto[0]), max(2.0, rect.width - ancho_caja - 2.0))
+        y = min(max(2.0, punto[1]), max(2.0, rect.height - alto_caja))
         punto = (x, y)
         self._editor_xy = punto
         self._editor_nombre = nombre
         self._editor_ancla = ancla
         cx, cy = self._a_canvas(*punto)
-        ancho_px = A.ANCHO_NOTA * self.zoom
-        cuerpo = max(7, int(round(A.CUERPO_NOTA * self.zoom)))
-        self._editor = tk.Text(self.canvas, wrap="word", height=4, undo=True,
-                               font=("Helvetica", cuerpo), bg=a_hex(A.FONDO_NOTA),
-                               fg=a_hex(self.color), relief="solid", bd=1,
-                               insertbackground=a_hex(self.color))
+        # El cuadro de escribir se ve IGUAL que la nota terminada: misma letra
+        # (en pixeles, tamano negativo), mismo margen interno y mismo alto de
+        # renglon. Y es fit to size mientras se escribe (ver _crecer_editor).
+        cuerpo = max(6, int(round(A.CUERPO_NOTA * self.zoom)))
+        fuente = tkfont.Font(family="Helvetica", size=-cuerpo)
+        self._editor_fuente = fuente
+        pad = max(2, int(round(A.PAD_NOTA * self.zoom)))
+        # Medio "aire" arriba y medio abajo de cada renglon: asi cada linea mide
+        # ALTO_LINEA, igual que en A.tope_renglon.
+        aire = max(0, int(round(A.ALTO_LINEA * self.zoom)) - fuente.metrics("linespace"))
+        self._editor = tk.Text(self.canvas, wrap="word", height=1, undo=True,
+                               font=fuente, bg=a_hex(A.FONDO_NOTA),
+                               fg=a_hex(self._editor_color), relief="solid", bd=1,
+                               highlightthickness=0, padx=pad, pady=pad,
+                               spacing1=aire // 2, spacing3=aire - aire // 2,
+                               insertbackground=a_hex(self._editor_color))
         self._editor_win = self.canvas.create_window(cx, cy, anchor="nw", window=self._editor,
-                                                     width=ancho_px)
+                                                     width=A.ANCHO_MIN_NOTA * self.zoom)
         if texto:
             self._editor.insert("1.0", texto)
         self._editor.focus_set()
@@ -1520,10 +2176,24 @@ class Visor(ttk.Frame):
         self.pie.config(text=t("pie_escribiendo"))
 
     def _crecer_editor(self, _e=None):
+        """El cuadro de escribir crece con el texto, como la nota terminada.
+
+        Ancho y renglones salen de la misma cuenta que la caja final
+        (A.medir_nota / A.lineas_nota): lo que se ve al escribir es lo que queda.
+        """
         if self._editor is None:
             return
-        lineas = int(self._editor.index("end-1c").split(".")[0])
-        self._editor.config(height=max(4, min(16, lineas + 1)))
+        texto = self._editor.get("1.0", "end-1c")
+        lineas = A.lineas_nota(texto, self._editor_ancho)
+        # Ancho = el renglon mas ancho TAL COMO LO DIBUJA la pantalla (misma
+        # razon que en _dibujar_marca: medido "de libro" quedaba aire a la
+        # derecha), mas los margenes, el borde y lugar para el cursor.
+        mas_ancho = max([self._editor_fuente.measure(l) for l in lineas] + [0])
+        minimo = A.ANCHO_MIN_NOTA * self.zoom
+        pad = int(self._editor.cget("padx"))
+        self.canvas.itemconfigure(self._editor_win,
+                                  width=max(minimo, mas_ancho + 2 * pad + 2 + 4))
+        self._editor.config(height=max(1, len(lineas)))
 
     def _cerrar_editor(self, confirmar=True):
         if self._editor is None:
@@ -1536,21 +2206,45 @@ class Visor(ttk.Frame):
             ed.destroy()
         except Exception:
             pass
-        if texto.strip():
+        original = getattr(self, "_editor_original", None)
+        color = getattr(self, "_editor_color", None) or self.color
+        texto = texto.rstrip()
+        if original is not None:
+            # Se estaba EDITANDO una nota que ya existia.
+            indice, previa = original
+            lista = self.marcas.setdefault(self.pno, [])
+            indice = min(indice, len(lista))
+            if not confirmar or texto == previa.get("texto", ""):
+                # Cancelada, o sin cambios: vuelve tal cual estaba, y se saca la
+                # instantanea de deshacer que se tomo al empezar a editar.
+                lista.insert(indice, previa)
+                if self.historial:
+                    self.historial.pop()
+            elif texto.strip():
+                editada = dict(previa)
+                editada.update({"texto": texto, "x": xy[0], "y": xy[1], "color": color})
+                self._encajar_nota(editada)
+                lista.insert(indice, editada)
+                self._marcar_sucio()
+            else:
+                self._marcar_sucio()        # se borro todo el texto: la nota se va
+            self._editor_original = None
+            self.render(self.canvas.yview()[0])
+        elif texto.strip():
             nueva = {"tipo": "texto", "x": xy[0], "y": xy[1],
-                     "texto": texto.rstrip(), "color": self.color,
-                     "nombre": getattr(self, "_editor_nombre", "") or ""}
-            ancla = getattr(self, "_editor_ancla", None) or self.ancla_pendiente
-            self.ancla_pendiente = None
-            if ancla:
-                nueva["ancla"] = ancla
+                     "texto": texto, "color": color,
+                     "nombre": self._editor_nombre or ""}
+            if self._editor_ancla:
+                nueva["ancla"] = self._editor_ancla
+            self._encajar_nota(nueva)
             self._agregar(nueva)
         self._editor_nombre = ""
         self._editor_ancla = None
+        self._editor_original = None
         # Volver a Seleccionar: el estado en reposo es siempre el mismo.
         if self.modo == "texto":
             self.modo = "seleccionar"
-            self.canvas.config(cursor="arrow")
+            self._aplicar_cursor()
             self._pintar_botones()
         self._actualizar_pie()
 
@@ -1566,8 +2260,15 @@ class Visor(ttk.Frame):
         if numero == self.pno:
             return
         # Los indices de seleccion son de la pagina actual: al cambiar dejan de
-        # significar nada y apuntarian a marcas equivocadas.
+        # significar nada y apuntarian a marcas equivocadas. Por lo mismo se
+        # abandona lo que estaba "por atarse": una referencia empezada en una
+        # pagina se escribia en la marca con el mismo numero de la otra, y una
+        # frase pendiente se ataba con las coordenadas de la pagina anterior.
         self._limpiar_seleccion()
+        if self.ancla_pendiente or self.refiriendo:
+            self.ancla_pendiente = None
+            self.refiriendo = []
+            self._aplicar_cursor()
         self.pno = numero
         self._reajustar()      # paginas de distinto tamano dentro del mismo PDF
         self.render(y)
@@ -1582,17 +2283,13 @@ class Visor(ttk.Frame):
         deshace todo hasta dejarlo como estaba, el programa deja de pedir que se
         guarde algo que ya no cambio.
         """
-        partes = []
-        for pno in sorted(self.marcas):
-            for mk in self.marcas[pno]:
-                if mk["tipo"] == "lapiz":
-                    partes.append("%d:l:%s:%.1f:%s" % (
-                        pno, mk["color"], mk.get("grosor", 0),
-                        ";".join("%.1f,%.1f" % (p[0], p[1])
-                                 for t in mk["trazos"] for p in (t[0], t[-1]))))
-                else:
-                    partes.append("%d:t:%.1f:%.1f:%s" % (pno, mk["x"], mk["y"], mk["texto"]))
-        return "|".join(partes)
+        # El estado COMPLETO de cada marca (color, nombre, frase atada,
+        # referencia, ancho...). Antes solo miraba la posicion y el texto: cambiar
+        # el color de una nota o renombrar una marca no contaba como cambio, no
+        # aparecia el asterisco y al cerrar se perdia sin avisar.
+        import json
+        return json.dumps({str(p): l for p, l in self.marcas.items() if l},
+                          sort_keys=True, default=list, ensure_ascii=False)
 
     @property
     def sucio(self):
@@ -1615,6 +2312,7 @@ class Visor(ttk.Frame):
     # ------------------------------------------------------------ guardar ----
 
     def guardar(self):
+        self.dialogo_guardado = None
         self._cerrar_editor(confirmar=True)
         if self.cuenta_marcas() == 0:
             if not messagebox.askyesno(t("dlg_sin_marcas_titulo"),
@@ -1636,7 +2334,7 @@ class Visor(ttk.Frame):
         # Guardar encima del PDF que se esta mirando: Windows no deja reemplazar
         # un archivo abierto, asi que hay que soltarlo y volver a tomarlo. Pasa
         # siempre que se reabre una devolucion para agregarle algo mas.
-        mismo = os.path.abspath(destino) == os.path.abspath(self.ruta)
+        mismo = A.misma_ruta(destino, self.ruta)
         y_actual = self.canvas.yview()[0]
         if mismo:
             try:
@@ -1644,6 +2342,7 @@ class Visor(ttk.Frame):
             except Exception:
                 pass
             self.doc = None
+        self._ocupado(True)
         try:
             A.guardar(self.ruta, destino, self.marcas)
         except A.MarcasNoGuardadas as err:
@@ -1660,6 +2359,7 @@ class Visor(ttk.Frame):
                 t("dlg_no_guardar_cuerpo") % err, parent=self)
             return
         finally:
+            self._ocupado(False)
             if mismo:
                 # Volver a tomar el archivo, se haya guardado bien o mal, para
                 # que el programa nunca quede sin documento en pantalla.
@@ -1673,26 +2373,56 @@ class Visor(ttk.Frame):
         self.firma_guardada = self._firma()
         self.app.actualizar_titulo()
         self._actualizar_pie()
-        # Se copia el mensaje ENTERO, no solo la ruta: asi David pega una vez en
+        # Se copia el mensaje ENTERO, no solo la ruta: asi el usuario pega una vez en
         # el chat y el agente ya sabe que es una devolucion y con que leerla, sin
         # tener que explicarle nada ni acordarse del comando.
         self.app.clipboard_clear()
         self.app.clipboard_append(mensaje_para_el_chat(destino))
         self.app.update()           # dejar el portapapeles firme en Windows
-        DialogoGuardado(self.app, destino)
+        self.dialogo_guardado = DialogoGuardado(self.app, destino)
+
+    def _ocupado(self, si):
+        """Cursor de espera mientras se guarda: un PDF grande tarda unos
+        segundos y, sin aviso, la ventana parecia colgada."""
+        try:
+            self.app.config(cursor="watch" if si else "")
+            if si:
+                self.canvas.config(cursor="watch")
+                self.pie.config(text=t("pie_guardando"))
+                self.app.update_idletasks()
+            else:
+                self._aplicar_cursor()
+        except Exception:
+            pass
 
 
 def mensaje_para_el_chat(destino):
     """El texto que se copia al guardar.
 
-    ESTA ESCRITO PARA QUE LO LEA UN AGENTE, no David: es lo que David pega en el
+    ESTA ESCRITO PARA QUE LO LEA UN AGENTE, no el usuario: es lo que el usuario pega en el
     chat y con eso el otro lado tiene que entender, sin preguntar nada, que es
     esto, donde esta y como leerlo. Por eso arranca diciendo que es, en una
     linea, y sigue con el comando exacto.
     """
     extractor = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "leer_devolucion.py")
-    return t("mensaje_chat") % (destino, extractor, destino)
+    return t("mensaje_chat") % (destino, _python_para_el_agente(), extractor, destino)
+
+
+def _python_para_el_agente():
+    """Ruta completa del Python que tiene las librerias.
+
+    Con "python" a secas, el agente podia terminar usando otro Python de la
+    maquina (hay mas de uno) y fallar por falta de pymupdf. Se da el python.exe
+    que esta al lado del que corre el programa (no el pythonw, que no muestra
+    nada en la consola).
+    """
+    carpeta = os.path.dirname(sys.executable)
+    candidato = os.path.join(carpeta, "python.exe")
+    if os.path.isfile(candidato):
+        return candidato
+    return sys.executable if not os.path.basename(sys.executable).lower().startswith("pythonw") \
+        else "python"
 
 
 class DialogoGuardado(tk.Toplevel):
@@ -1771,6 +2501,7 @@ class App(tk.Tk):
         # varias cosas encadenadas, y con un solo error a la vista se ve el
         # sintoma y nunca la causa.
         errores.limpiar()
+        self._ultimo_cartel = -1e9
         self.report_callback_exception = self._fallo_no_previsto
 
         self.contenedor = ttk.Frame(self)
@@ -1780,19 +2511,94 @@ class App(tk.Tk):
         self.mostrar_biblioteca()
 
         self.bind("<Key>", self._tecla)
-        self.bind("<Control-s>", lambda e: self.visor and self.visor.guardar())
-        # Ctrl+Z mientras se escribe una nota lo maneja el cuadro de texto
-        # (deshace lo tipeado); si no, deshace la ultima marca.
-        self.bind("<Control-z>",
-                  lambda e: (self.visor and self.visor._editor is None
-                             and self.visor.deshacer()))
-        # Rehacer: Ctrl+Y es lo que se usa en Windows; Ctrl+Shift+Z tambien, que
-        # es lo que espera el que viene de programas de diseno.
-        for combo in ("<Control-y>", "<Control-Shift-Z>", "<Control-Shift-z>"):
-            self.bind(combo, lambda e: (self.visor and self.visor._editor is None
-                                        and self.visor.rehacer()))
-        self.bind("<Control-c>", lambda e: self.visor and self.visor.copiar_texto())
+        # Ctrl+S guarda aunque se este escribiendo una nota (guardar la cierra
+        # primero): es lo que se espera en cualquier programa.
+        for combo in ("<Control-s>", "<Control-S>"):
+            self.bind(combo, lambda e: self.visor and self.visor.guardar())
+        # F3 / Shift+F3: siguiente y anterior de la ultima busqueda.
+        self.bind("<F3>", lambda e: (self.visor and self.visor.buscar(1), "break")[1])
+        self.bind("<Shift-F3>", lambda e: (self.visor and self.visor.buscar(-1), "break")[1])
+        # Los demas atajos con Ctrl NO se disparan mientras se escribe en un
+        # cuadro de texto (el nombre de una marca, el numero de pagina, una
+        # nota): ahi Ctrl+Z / Ctrl+C / Ctrl+A son del cuadro, no de las marcas.
+        # Antes, Ctrl+C en el nombre de una marca pisaba el portapapeles con el
+        # texto del PDF seleccionado.
+        atajos = {
+            "<Control-z>": lambda v: v.deshacer(),
+            # Rehacer: Ctrl+Y es lo de Windows; Ctrl+Shift+Z, lo de los
+            # programas de diseno.
+            "<Control-y>": lambda v: v.rehacer(),
+            "<Control-Shift-Z>": lambda v: v.rehacer(),
+            "<Control-Shift-z>": lambda v: v.rehacer(),
+            "<Control-c>": lambda v: v.copiar_texto(),
+            "<Control-a>": lambda v: v.seleccionar_todo(),
+            # Zoom con los atajos de Acrobat/Edge: Ctrl+0 hoja entera, Ctrl+1
+            # tamano real, Ctrl+2 ancho, Ctrl+ +/- acercar y alejar.
+            "<Control-Key-0>": lambda v: v.zoom_pagina(),
+            "<Control-Key-1>": lambda v: v.zoom_real(),
+            "<Control-Key-2>": lambda v: v.zoom_ancho(),
+            "<Control-plus>": lambda v: v.set_zoom(v.zoom * 1.2),
+            "<Control-equal>": lambda v: v.set_zoom(v.zoom * 1.2),
+            "<Control-KP_Add>": lambda v: v.set_zoom(v.zoom * 1.2),
+            "<Control-minus>": lambda v: v.set_zoom(v.zoom / 1.2),
+            "<Control-KP_Subtract>": lambda v: v.set_zoom(v.zoom / 1.2),
+            "<Control-Home>": lambda v: v.ir_pagina(0),
+            "<Control-End>": lambda v: v.ir_pagina(v.doc.page_count - 1),
+            "<Control-f>": lambda v: v.abrir_busqueda(),
+            # Con Bloq Mayus activado Tk ve la letra en mayuscula: sin estas,
+            # Ctrl+Z, Ctrl+C, etc. no hacian nada. (Ctrl+Shift+Z sigue siendo
+            # rehacer: es una combinacion mas especifica y gana.)
+            "<Control-Z>": lambda v: v.deshacer(),
+            "<Control-Y>": lambda v: v.rehacer(),
+            "<Control-C>": lambda v: v.copiar_texto(),
+            "<Control-A>": lambda v: v.seleccionar_todo(),
+            "<Control-F>": lambda v: v.abrir_busqueda(),
+        }
+        for combo, accion in atajos.items():
+            self.bind(combo, self._atajo_visor(accion))
+        # Estos funcionan tambien en la pantalla de la carpeta.
+        for combo in ("<Control-o>", "<Control-O>"):
+            self.bind(combo, lambda e: (self.abrir_archivo(), "break")[1])
+        for combo in ("<Control-w>", "<Control-W>"):
+            self.bind(combo, lambda e: (self.volver_biblioteca(), "break")[1])
+        self.bind("<F1>", lambda e: (self.mostrar_ayuda(), "break")[1])
         self.protocol("WM_DELETE_WINDOW", self.cerrar)
+
+    def _escribiendo(self):
+        """True si el teclado esta en un cuadro de texto (nota, nombre, pagina)."""
+        try:
+            return isinstance(self.focus_get(), (tk.Entry, tk.Text, ttk.Entry))
+        except Exception:
+            return False
+
+    def _atajo_visor(self, accion):
+        """Arma el manejador de un atajo con Ctrl que actua sobre el visor."""
+        def manejador(_e):
+            if self.visor is None or self._escribiendo():
+                return None
+            accion(self.visor)
+            return "break"
+        return manejador
+
+    def abrir_archivo(self):
+        """Ctrl+O: abrir un PDF de cualquier carpeta, sin pasar por la lista."""
+        if self.visor is not None:
+            carpeta = os.path.dirname(self.visor.ruta)
+        elif self.biblioteca is not None:
+            carpeta = self.biblioteca.carpeta
+        else:
+            carpeta = CARPETA_INICIAL
+        ruta = filedialog.askopenfilename(parent=self, title=t("dlg_abrir_titulo"),
+                                          initialdir=carpeta,
+                                          filetypes=[("PDF", "*.pdf")])
+        if not ruta:
+            return
+        if self.visor is not None and not self._confirmar_descartar():
+            return
+        self.abrir_pdf(ruta)
+
+    def mostrar_ayuda(self):
+        ayuda.Ventana(self, ruta_errores=errores.ARCHIVO)
 
     # ---------------------------------------------------------------- idioma --
 
@@ -1820,11 +2626,19 @@ class App(tk.Tk):
         """Cualquier error que se escape de un boton o de un evento cae aca.
 
         Antes estos se perdian en el aire: el programa quedaba raro y no habia
-        rastro de por que. Ahora se anotan todos y David puede pasarle el
+        rastro de por que. Ahora se anotan todos y el usuario puede pasarle el
         archivo entero al agente.
         """
         try:
             cuantos = errores.anotar("Fallo no previsto en la ventana", valor)
+            # Un cartel cada tanto: si un error se repetia en cada movimiento del
+            # mouse, salian decenas de carteles encimados. Los demas quedan igual
+            # anotados en el registro.
+            import time
+            ahora = time.monotonic()
+            if ahora - self._ultimo_cartel < 4.0:
+                return
+            self._ultimo_cartel = ahora
             self.after(50, lambda: messagebox.showerror(
                 t("app_fallo_titulo"),
                 t("app_fallo_cuerpo")
@@ -1852,12 +2666,12 @@ class App(tk.Tk):
         self.visor.destroy()
         self.visor = None
 
-    def mostrar_biblioteca(self):
+    def mostrar_biblioteca(self, seleccionar=None):
         self._soltar_visor()
         if self.biblioteca is None:
             self.biblioteca = Biblioteca(self)
         self.biblioteca.pack(fill="both", expand=True)
-        self.biblioteca.refrescar()
+        self.biblioteca.refrescar(seleccionar=seleccionar)
         self.actualizar_titulo()
 
     def abrir_pdf(self, ruta):
@@ -1879,7 +2693,8 @@ class App(tk.Tk):
     def volver_biblioteca(self):
         if self.visor is not None and not self._confirmar_descartar():
             return
-        self.mostrar_biblioteca()
+        # Al volver, queda elegido en la lista el PDF que se estaba mirando.
+        self.mostrar_biblioteca(seleccionar=self.visor.ruta if self.visor else None)
 
     def _confirmar_descartar(self):
         if self.visor is None:
@@ -1897,12 +2712,19 @@ class App(tk.Tk):
             return False
         if r:
             self.visor.guardar()
+            # Esperar a que se lea el cartel de "guardado" antes de cerrar: si
+            # no, aparecia y desaparecia en el acto al salir con "Si, guardar".
+            dialogo = self.visor.dialogo_guardado
+            if dialogo is not None and dialogo.winfo_exists():
+                self.wait_window(dialogo)
             return not self.visor.sucio
         return True
 
     def actualizar_titulo(self):
         if self.visor is None:
-            self.title(t("app_titulo_carpeta") % os.path.basename(CARPETA_INICIAL))
+            carpeta = self.biblioteca.carpeta if self.biblioteca is not None else CARPETA_INICIAL
+            self.title(t("app_titulo_carpeta")
+                       % (os.path.basename(carpeta.rstrip("\\/")) or carpeta))
         else:
             self.title(t("app_titulo_doc")
                        % ("* " if self.visor.sucio else "", os.path.basename(self.visor.ruta)))
@@ -1922,13 +2744,24 @@ class App(tk.Tk):
                 return          # idem si el foco esta en el numero de pagina
         except Exception:
             pass
+        # Las combinaciones con Ctrl o Alt tienen su propio atajo (o ninguno):
+        # sin esto, Ctrl+D o Ctrl+T cambiaban de herramienta sin querer.
+        if e.state & (0x0004 | 0x20000):
+            return
         k = e.keysym.lower()
         if k == "t" and v.modo == "seleccionar" and v.comentar_seleccion():
             return          # habia texto elegido: la nota quedo atada a esa frase
+        # Con marcas elegidas, las flechas las mueven (como en cualquier
+        # editor); Shift las mueve de a 10 pt. Sin nada elegido, pasan de pagina.
+        paso = 10.0 if e.state & 0x0001 else 1.0
+        flechas = {"left": (-paso, 0), "right": (paso, 0), "up": (0, -paso), "down": (0, paso)}
+        if k in flechas and v.seleccion:
+            v.empujar_seleccion(*flechas[k])
+            return
         if k in ("d", "t", "b", "s"):
             v.set_modo({"d": "dibujar", "t": "texto",
                         "s": "seleccionar", "b": "borrar"}[k])
-        elif k == "delete":
+        elif k in ("delete", "backspace"):
             v._borrar_seleccion()
         elif k in ("next", "space"):
             v.ir_pagina(v.pno + 1)
@@ -1947,8 +2780,11 @@ class App(tk.Tk):
         elif k == "end":
             v.canvas.yview_moveto(1)
         elif k == "escape":
-            if not v.cancelar_pendientes():
-                self.volver_biblioteca()
+            # Esc cancela o suelta, como en cualquier editor; nunca cierra el
+            # documento (antes, sin nada pendiente, volvia a la carpeta y uno
+            # perdia la hoja por querer deseleccionar). Salir: "< Carpeta" o Ctrl+W.
+            if not v.cancelar_pendientes() and (v.seleccion or v._texto_sel):
+                v._soltar_todo()
         elif k in ("plus", "equal", "kp_add"):
             v.set_zoom(v.zoom * 1.2)
         elif k in ("minus", "kp_subtract"):
@@ -1957,7 +2793,7 @@ class App(tk.Tk):
 
 def main():
     # Recien aca (no al importar el modulo) se lee el idioma que dejo elegido
-    # David. Asi la red de seguridad (autotest.py), que crea la ventana sin pasar
+    # el usuario. Asi la red de seguridad (autotest.py), que crea la ventana sin pasar
     # por main(), corre siempre en espanol, que es lo que sus comprobaciones
     # esperan. Ver idiomas.py, decision 1.
     idiomas.cargar_idioma_guardado()
@@ -1979,7 +2815,7 @@ def _morir_avisando(err):
     """Mostrar el error en pantalla en vez de no hacer nada.
 
     El programa arranca con pythonw.exe, que no tiene consola: si algo falla al
-    iniciar (falta una libreria, se movio un archivo), sin esto David haria doble
+    iniciar (falta una libreria, se movio un archivo), sin esto el usuario haria doble
     clic en el icono del escritorio y NO PASARIA NADA, sin ninguna pista de por
     que. Se muestra el error y ademas se deja escrito al lado del programa.
     """

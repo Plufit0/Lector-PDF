@@ -9,7 +9,9 @@
 #   2. Copia ahi el programa (sin los archivos de trabajo ni el __pycache__)
 #   3. Le da permiso de escritura al usuario sobre esa carpeta  <-- ver nota
 #   4. Rehace los accesos directos del escritorio apuntando a la ruta nueva
-#   5. Deja el instructivo actualizado en el escritorio
+#   (El instructivo NO se deja en el escritorio: vive en el boton "?" del
+#   programa, que siempre esta al dia. Queda una copia, como_usar.txt, junto al
+#   programa, por si algun dia el programa no abre.)
 #
 # NOTA SOBRE EL PERMISO DE ESCRITURA (paso 3): por defecto Program Files es de
 # solo lectura, y esta bien que lo sea. Se le da permiso al usuario sobre ESTA
@@ -25,6 +27,10 @@ param(
     # rehacer los accesos directos sin volver a copiar de ningun lado).
     [string]$Origen = $PSScriptRoot,
     [string]$Destino = "C:\Program Files\Mios\LectorPDF",
+    # El Python que tiene pymupdf y pillow. Por defecto, el Python 3.11 instalado
+    # para este usuario (en esta maquina hay mas de un Python y solo ese tiene
+    # las librerias). Si esta en otro lado, pasarlo con -Python "ruta\pythonw.exe".
+    [string]$Python = (Join-Path $env:LOCALAPPDATA "Programs\Python\Python311\pythonw.exe"),
     [switch]$SinPermisos
 )
 
@@ -40,8 +46,10 @@ trap {
     exit 1
 }
 
-# Solo estos archivos son "el programa". El resto (ESTADO.md, autotest, los
-# scripts de instalacion) es material de trabajo y no viaja.
+# Solo estos archivos son "el programa". El resto (notas del asistente, docs,
+# README, los scripts de instalacion) es material de trabajo y no viaja. El
+# autotest SI viaja a proposito: es la red de seguridad y se corre desde la
+# carpeta instalada.
 $DEL_PROGRAMA = @("lector.pyw", "anotaciones.py", "errores.py", "ayuda.py",
                   "idiomas.py", "leer_devolucion.py", "lector.ico", "autotest.py",
                   "como_usar.txt")
@@ -78,18 +86,26 @@ if (-not $SinPermisos) {
 }
 
 # --- accesos directos ---------------------------------------------------
-$pw = "C:\Users\david\AppData\Local\Programs\Python\Python311\pythonw.exe"
-if (-not (Test-Path $pw)) { throw "No se encontro pythonw.exe en $pw" }
+$pw = $Python
+if (-not (Test-Path $pw)) { throw "No se encontro pythonw.exe en $pw (pasar otro con -Python)" }
 
 $sh = New-Object -ComObject WScript.Shell
-foreach ($d in @("C:\Users\david\Desktop", "C:\Users\david\OneDrive\Escritorio")) {
+# El escritorio real de este usuario (puede estar redirigido a OneDrive), y
+# por las dudas tambien el de OneDrive si existe aparte. Sin rutas fijas.
+$escritorios = @([Environment]::GetFolderPath("Desktop"))
+if ($env:OneDrive) {
+    foreach ($nombre in @("Escritorio", "Desktop")) {
+        $escritorios += (Join-Path $env:OneDrive $nombre)
+    }
+}
+foreach ($d in ($escritorios | Select-Object -Unique)) {
     if (Test-Path $d) {
         $lnk = $sh.CreateShortcut((Join-Path $d "Lector PDF.lnk"))
         $lnk.TargetPath       = $pw
         $lnk.Arguments        = '"' + (Join-Path $Destino "lector.pyw") + '"'
         $lnk.WorkingDirectory = $Destino
         $lnk.IconLocation     = (Join-Path $Destino "lector.ico") + ",0"
-        $lnk.Description      = "Leer PDFs y marcarlos encima para devoluciones de manual de diseno"
+        $lnk.Description      = "Leer cualquier PDF y marcarlo encima para devolverselo a un agente"
         $lnk.WindowStyle      = 1
         $lnk.Save()
         Write-Host "  acceso directo actualizado en $d"

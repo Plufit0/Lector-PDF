@@ -3,20 +3,20 @@
 leer_devolucion.py — convierte un PDF marcado en los dos canales que necesita el agente.
 
 Uso:
-    python leer_devolucion.py "C:\\ruta\\manual-devolucion.pdf"
-    python leer_devolucion.py "...pdf" --solo-marcas     (sin el texto del manual)
+    python leer_devolucion.py "C:\\ruta\\documento-devolucion.pdf"
+    python leer_devolucion.py "...pdf" --solo-marcas     (sin el texto del documento)
     python leer_devolucion.py "...pdf" --png-dir CARPETA (donde dejar las imagenes)
 
 Que imprime:
-    CANAL 1 — el texto del manual tal como estaba, limpio de marcas.
-    CANAL 2 — cada marca de David: que escribio o dibujo, en que pagina, y sobre
+    CANAL 1 — el texto del documento tal como estaba, limpio de marcas.
+    CANAL 2 — cada marca de quien lo reviso: que escribio o dibujo, en que pagina, y sobre
               que parte del texto original cae.
     Ademas deja un PNG de cada pagina marcada (pagina + marcas encima) para que
     el agente pueda VER los dibujos, que es lo que el texto no puede contar.
 
 POR QUE ASI: una devolucion marcada a mano tiene dos mitades que se entienden
-sola una junto a la otra: lo que decia el documento y lo que David le contesto.
-Si llegan mezcladas, el agente lee las notas como si fueran parte del manual.
+sola una junto a la otra: lo que decia el documento y lo que se le contesto.
+Si llegan mezcladas, el agente lee las notas como si fueran parte del documento.
 Por eso el canal 1 se extrae de una copia sin marcas (ver anotaciones.doc_sin_marcas)
 y el canal 2 se reconstruye desde las anotaciones, cada una anclada al texto que
 tiene debajo.
@@ -191,7 +191,7 @@ def informe(ruta, solo_marcas=False, png_dir=None):
     print("%d pagina(s) | %d marca(s) en la(s) pagina(s): %s"
           % (limpio.page_count, total,
              ", ".join(str(p + 1) for p in paginas_con_marcas) or "ninguna"))
-    if A.MARCA_PRODUCTOR not in producer:
+    if A.FIRMA_PRODUCTOR not in producer:
         print("AVISO: este PDF no fue marcado con el Lector PDF (producer=%r)." % producer)
         if total == 0:
             print("       Si esperabas marcas, puede que esten aplanadas como imagen,")
@@ -199,15 +199,15 @@ def informe(ruta, solo_marcas=False, png_dir=None):
     print("=" * 78)
 
     if not solo_marcas:
-        print("\n### CANAL 1 — EL MANUAL (texto original, sin las marcas)\n")
+        print("\n### CANAL 1 — EL DOCUMENTO (texto original, sin las marcas)\n")
         for n in range(limpio.page_count):
             texto = limpio[n].get_text().strip()
             print("--- pagina %d ---" % (n + 1))
             print(texto if texto else "(pagina sin texto: probablemente una imagen o un diagrama)")
             print()
 
-    print("\n### CANAL 2 — LA DEVOLUCION (lo que marco David)\n")
-    print("Cada marca tiene un nombre propio. Sirve para contestarle a David hablando")
+    print("\n### CANAL 2 — LA DEVOLUCION (lo que marco quien lo reviso)\n")
+    print("Cada marca tiene un nombre propio. Sirve para contestar hablando")
     print("de una marca concreta (\"lo de dibujo-p02-1\") sin que tenga que abrir el PDF.")
     print("Las que dicen NOTA SOBRE UNA FRASE estan atadas a esas palabras exactas:")
     print("ahi no hay nada que interpretar. Las que dicen NOTA ESCRITA son sueltas, y de")
@@ -224,7 +224,7 @@ def informe(ruta, solo_marcas=False, png_dir=None):
         # Orden de lectura: de arriba hacia abajo, y a igual altura de izq a der.
         def clave(mk):
             r = (A.bbox_trazo(mk["trazos"], mk.get("grosor", 2.0)) if mk["tipo"] == "lapiz"
-                 else A.rect_nota(mk["x"], mk["y"], mk["texto"]))
+                 else A.rect_nota(mk["x"], mk["y"], mk["texto"], mk.get("ancho")))
             return (round(r.y0 / 10), r.x0)
 
         print("--- pagina %d (%d marca(s)) ---" % (n + 1, len(lista)))
@@ -236,18 +236,18 @@ def informe(ruta, solo_marcas=False, png_dir=None):
                 mk["nombre"] = A.nombre_por_defecto(mk["tipo"], n, indice)
         for mk in sorted(lista, key=clave):
             if mk["tipo"] == "texto":
-                rect = A.rect_nota(mk["x"], mk["y"], mk["texto"])
+                rect = A.rect_nota(mk["x"], mk["y"], mk["texto"], mk.get("ancho"))
                 ancla = mk.get("ancla")
                 if ancla and ancla.get("cita"):
-                    # Nota ATADA a una frase: no hay nada que deducir. David
-                    # eligio esas palabras y escribio sobre ellas.
+                    # Nota ATADA a una frase: no hay nada que deducir. Quien
+                    # reviso eligio esas palabras y escribio sobre ellas.
                     print("\n  [NOTA SOBRE UNA FRASE]  pagina %d  ·  se llama \"%s\""
                           % (n + 1, mk.get("nombre") or "(sin nombre)"))
-                    print("    Sobre esta frase del manual:")
+                    print("    Sobre esta frase del documento:")
                     print("      %s" % cita(ancla["cita"], 500))
                     if mk.get("ref"):
                         print("    Y ademas se refiere a la marca: %s" % mk["ref"])
-                    print("    David escribio:")
+                    print("    Lo que escribio:")
                     for linea in mk["texto"].splitlines():
                         print("      > %s" % linea)
                     continue
@@ -282,7 +282,7 @@ def informe(ruta, solo_marcas=False, png_dir=None):
                     print("    encima de: %s" % (fig if fig else
                           "(ni texto ni figura: puede ser una marca al margen)"))
                 if mk.get("ancla") and mk["ancla"].get("cita"):
-                    print("    ATADO a esta frase del manual: %s"
+                    print("    ATADO a esta frase del documento: %s"
                           % cita(mk["ancla"]["cita"], 400))
                 if mk.get("ref"):
                     print("    Se refiere a la marca: %s" % mk["ref"])
@@ -291,8 +291,17 @@ def informe(ruta, solo_marcas=False, png_dir=None):
 
     # Imagenes: sin esto, un circulo y una flecha son el mismo dato.
     if paginas_con_marcas:
-        destino = png_dir or os.path.join(tempfile.gettempdir(), "devolucion_png")
+        # Una carpeta por devolucion: antes todas iban a la misma y las imagenes
+        # de una devolucion vieja se mezclaban con las de la nueva.
+        base = os.path.splitext(os.path.basename(ruta))[0]
+        destino = png_dir or os.path.join(tempfile.gettempdir(), "devolucion_png", base)
         os.makedirs(destino, exist_ok=True)
+        for viejo in os.listdir(destino):
+            if viejo.startswith("pagina_") and viejo.endswith(".png"):
+                try:
+                    os.remove(os.path.join(destino, viejo))
+                except OSError:
+                    pass
         print("\n### IMAGENES (pagina con las marcas encima)\n")
         z = DPI_PNG / 72.0
         for n in paginas_con_marcas:

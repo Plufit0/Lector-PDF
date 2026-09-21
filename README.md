@@ -3,151 +3,206 @@
 </p>
 
 <p align="center">
-  <a href="#-english">🇺🇸 English</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#-español">🇦🇷 Español</a>
+  <a href="#-español">🇦🇷 Español</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#-english">🇺🇸 English</a>
 </p>
-
----
-
-## 🇺🇸 English
-
-Read a design manual and mark it up —drawing and writing on top of it— to hand it
-back to a conversational agent.
-
-The core idea: **you see a single marked-up document; the agent receives two
-separate things.** On one side, the manual's original text; on the other, each
-mark together with the piece of text it lands on. One file, two channels.
-
-### How it works
-
-Double-click the desktop shortcut. It opens showing the PDFs in your Downloads
-folder, newest first. You open one, read and mark it, save, and on saving the
-program leaves a ready-to-paste message on the clipboard for your chat.
-
-**The default tool is Select**, like in editing programs: you can pick, move and
-edit what's already marked without pressing a button first. To mark, you choose
-**Draw** or **Text**; when you're done, it returns to Select on its own. **The
-mouse wheel always scrolls (reads)** in any mode — reading never depends on the
-active tool. Pressing the **mouse wheel** grabs the sheet and pans it (the
-"hand"). **Right-click** drags a green box to select drawings or text by area.
-
-The full guide is behind the **"?"** button.
-
-### Language
-
-The whole interface is bilingual. An **ES/EN** button in the toolbar switches
-between Spanish and English on the spot, without closing the PDF or losing your
-marks, and remembers your choice for next time.
-
-### The files
-
-| file | what it does |
-|---|---|
-| `lector.pyw` | the program: library, viewer, marking tools |
-| `idiomas.py` | the language dictionary (Spanish/English) |
-| `anotaciones.py` | save and read the marks inside the PDF |
-| `ayuda.py` | the guide, in one place: the "?" window and the `.txt` come from here |
-| `errores.py` | log of every error in the session |
-| `leer_devolucion.py` | **the agent runs this** to understand the returned file |
-| `autotest.py` | 144 checks · `python autotest.py` |
-| `instalar.ps1` | installs into Program Files and rebuilds the shortcuts |
-
-### How the agent reads a returned file
-
-```
-python "C:\Program Files\Mios\LectorPDF\leer_devolucion.py" "path\to\the-returned.pdf"
-```
-
-It returns the clean original text, each mark with its name and the text it lands
-on, and a PNG of every marked page.
-
-### How the marks are stored
-
-As **standard PDF annotations**, not pixels burned onto the page: `Ink` for
-free-hand strokes, `FreeText` for written notes, a faint `Underline` for the
-phrase a mark is tied to. Every own annotation is signed with author
-`Devolucion`, so they are recognized on reopening and don't clash with Edge or
-Acrobat. The manual's text stays fully extractable, and the marks remain editable
-after saving.
-
-### Requirements
-
-Python 3.11 with `pymupdf` and `pillow`. The shortcut points to the interpreter
-by absolute path on purpose: this machine has more than one Python installed and
-only one has the libraries.
 
 ---
 
 ## 🇦🇷 Español
 
-Leer un manual de diseño y marcarlo encima —dibujando y escribiendo— para
-devolvérselo a un agente conversacional.
+**Lector PDF** abre cualquier PDF, te deja marcarlo encima con dibujos y notas, y
+lo guarda de forma que un agente conversacional (un asistente de IA) entienda
+exactamente qué marcaste y sobre qué parte del texto.
 
-La idea central: **David ve un solo documento marcado; el agente recibe dos cosas
-separadas.** Por un lado el texto original del manual, por otro cada marca con la
-parte del texto sobre la que cae. Un solo archivo, dos canales.
+Vos ves un solo documento marcado. El agente recibe dos cosas separadas: el
+texto original del documento, y cada marca con la frase sobre la que cae.
 
-### Cómo se usa
+<p align="center"><img src="docs/captura-es.png" alt="Lector PDF en español" width="900"></p>
 
-Doble clic en el acceso directo del escritorio. Se abre mostrando los PDFs de
-Descargas, el más nuevo arriba. Se abre uno, se lee y se marca, se guarda, y al
-guardar el programa deja en el portapapeles un mensaje listo para pegar en el chat.
+### Qué se puede hacer
 
-**La herramienta por defecto es Seleccionar**, como en los programas de edición:
-se puede elegir, mover y editar lo ya marcado sin apretar un botón antes. Para
-marcar se elige **Dibujar** o **Texto**; al terminar, vuelve solo a Seleccionar.
-**La rueda del mouse siempre lee (scroll)** en cualquier modo: leer nunca depende
-de la herramienta activa. Apretar la **ruedita** agarra la hoja y la arrastra (la
-"manito"). El **click derecho** dibuja un recuadro verde para elegir dibujos o
-texto por área.
+- **Dibujar** a mano alzada y **escribir notas** encima del PDF.
+- **Atar** una nota o un dibujo a una frase concreta, para que no haya dudas de
+  a qué se refiere.
+- **Mover, recolorear, renombrar, unir y borrar** lo marcado; las notas se
+  ajustan solas a su texto y se pueden ensanchar arrastrando su borde.
+- **Buscar** texto en el documento y comentar lo encontrado.
+- **Guardar** con un clic: el programa deja en el portapapeles un mensaje listo
+  para pegar en el chat, con el comando exacto para que el agente lo lea.
+- Interfaz en **español e inglés** (botón *English / Español*).
 
-El instructivo completo está en el botón **"?"** del programa.
+### Atajos principales
 
-### Idioma
-
-Toda la interfaz es bilingüe. Un botón **ES/EN** en la barra cambia entre español
-e inglés en el momento, sin cerrar el PDF ni perder las marcas, y recuerda tu
-elección para la próxima vez.
-
-### Los archivos
-
-| archivo | qué hace |
+| Acción | Atajo |
 |---|---|
-| `lector.pyw` | el programa: biblioteca, visor, herramientas de marcado |
-| `idiomas.py` | el diccionario de idiomas (español/inglés) |
-| `anotaciones.py` | guardar y leer las marcas dentro del PDF |
-| `ayuda.py` | el instructivo, en un solo lugar: de acá salen la ventana "?" y el `.txt` |
-| `errores.py` | registro de todos los errores de la sesión |
-| `leer_devolucion.py` | **lo corre el agente** para entender la devolución |
-| `autotest.py` | 144 comprobaciones · `python autotest.py` |
-| `instalar.ps1` | instala en Program Files y rehace los accesos directos |
+| Seleccionar / Dibujar / Texto / Borrar | `S` / `D` / `T` / `B` |
+| Leer (desplazarse) | rueda del mouse |
+| Arrastrar la hoja | apretar la ruedita y mover |
+| Elegir por área | clic derecho y arrastrar |
+| Menú de lo que hay debajo | clic derecho |
+| Zoom hacia el mouse | `Ctrl` + rueda |
+| Hoja entera / tamaño real / ancho | `Ctrl+0` / `Ctrl+1` / `Ctrl+2` |
+| Buscar | `Ctrl+F`, `Enter` o `F3` para el siguiente |
+| Deshacer / Rehacer | `Ctrl+Z` / `Ctrl+Y` |
+| Elegir todas las marcas | `Ctrl+A` |
+| Mover lo elegido | flechas (`Shift` para más) |
+| Borrar lo elegido | `Supr` |
+| Guardar | `Ctrl+S` |
+| Abrir otro PDF / volver a la lista | `Ctrl+O` / `Ctrl+W` |
+| Instructivo completo | `F1` |
+
+Pasando el mouse por cualquier botón aparece qué hace y su atajo.
+
+### Instalación
+
+Requiere **Windows** y **Python 3.11** con dos librerías:
+
+```
+python -m pip install pymupdf pillow
+```
+
+Después, desde una consola de PowerShell **como administrador**, en la carpeta
+del proyecto:
+
+```
+powershell -ExecutionPolicy Bypass -File instalar.ps1
+```
+
+Copia el programa a `C:\Program Files\Mios\LectorPDF` y crea el acceso directo
+*Lector PDF* en el escritorio. Si Python está en otro lugar:
+`instalar.ps1 -Python "ruta\a\pythonw.exe"`.
 
 ### Cómo lee el agente una devolución
 
+Al guardar, el mensaje que queda en el portapapeles ya trae este comando:
+
 ```
-python "C:\Program Files\Mios\LectorPDF\leer_devolucion.py" "ruta\del\pdf-devolucion.pdf"
+"ruta\a\python.exe" "C:\Program Files\Mios\LectorPDF\leer_devolucion.py" "archivo-devolucion.pdf"
 ```
 
-Devuelve el texto original limpio, cada marca con su nombre y el texto sobre el
-que cae, y un PNG de cada página marcada. Las imágenes hay que abrirlas: el texto
-dice dónde cae cada trazo, pero no si es un círculo, un tachado o una flecha.
+Devuelve el texto original limpio, cada marca con su nombre y la frase sobre la
+que cae, y una imagen de cada página marcada (para ver si un trazo es un
+círculo, un tachado o una flecha).
 
 ### Cómo se guardan las marcas
 
-Como **anotaciones PDF estándar**, no como píxeles quemados sobre la hoja: `Ink`
-para los trazos a mano, `FreeText` para las notas, un `Underline` tenue para la
-frase a la que una marca está atada. Toda anotación propia va firmada con autor
-`Devolucion`: así se reconocen al reabrir y no se pisan las de Edge o Acrobat. Por
-eso el texto del manual sigue siendo extraíble intacto, y las marcas se pueden
-seguir editando después de guardar.
+Como **anotaciones PDF estándar**, no como píxeles pegados a la hoja: por eso se
+ven en cualquier otro lector de PDF, el texto del documento sigue intacto y las
+marcas se pueden seguir editando después. El PDF original nunca se modifica:
+siempre se guarda una copia nueva (`-devolucion`, numerada).
 
-### Requisitos
+### Archivos
 
-Python 3.11 con `pymupdf` y `pillow`. El acceso directo apunta al intérprete por
-ruta absoluta, a propósito: en esta máquina hubo más de un Python instalado y
-sólo uno tenía las librerías.
+| Archivo | Qué es |
+|---|---|
+| `lector.pyw` | el programa: lista de PDFs, visor y herramientas |
+| `anotaciones.py` | guardar y leer las marcas dentro del PDF |
+| `leer_devolucion.py` | el lector de devoluciones que corre el agente |
+| `idiomas.py` | todos los textos de la interfaz, en español e inglés |
+| `ayuda.py` | el instructivo del botón `?` |
+| `errores.py` | registro de errores de la sesión |
+| `autotest.py` | pruebas automáticas: `python autotest.py` |
+| `instalar.ps1` | instalador |
 
-### Dónde escribe
+Nada se escribe junto al programa: el registro de errores y el idioma elegido
+van a `%LOCALAPPDATA%\LectorPDF`.
 
-Nada se escribe junto al programa. El registro de errores y el idioma elegido van
-a `%LOCALAPPDATA%\LectorPDF`, porque Program Files es de sólo lectura.
-</content>
+---
+
+## 🇺🇸 English
+
+**Lector PDF** opens any PDF, lets you mark it up with drawings and notes, and
+saves it so that a conversational agent (an AI assistant) understands exactly
+what you marked and on which part of the text.
+
+You see a single marked-up document. The agent receives two separate things:
+the document's original text, and each mark with the sentence it falls on.
+
+<p align="center"><img src="docs/captura-en.png" alt="Lector PDF in English" width="900"></p>
+
+### What you can do
+
+- **Draw** freehand and **write notes** on top of the PDF.
+- **Tie** a note or a drawing to a specific sentence, so there is no doubt
+  about what it refers to.
+- **Move, recolor, rename, merge and delete** marks; notes fit their text by
+  themselves and can be widened by dragging their edge.
+- **Find** text in the document and comment on what you found.
+- **Save** in one click: the program puts a ready-to-paste message on the
+  clipboard, with the exact command the agent needs to read it.
+- Interface in **Spanish and English** (*English / Español* button).
+
+### Main shortcuts
+
+| Action | Shortcut |
+|---|---|
+| Select / Draw / Text / Erase | `S` / `D` / `T` / `B` |
+| Read (scroll) | mouse wheel |
+| Drag the sheet | press the wheel and move |
+| Select by area | right-click and drag |
+| Menu for what is under the mouse | right-click |
+| Zoom toward the mouse | `Ctrl` + wheel |
+| Whole page / actual size / width | `Ctrl+0` / `Ctrl+1` / `Ctrl+2` |
+| Find | `Ctrl+F`, `Enter` or `F3` for the next one |
+| Undo / Redo | `Ctrl+Z` / `Ctrl+Y` |
+| Select all marks | `Ctrl+A` |
+| Nudge the selection | arrows (`Shift` for more) |
+| Delete the selection | `Del` |
+| Save | `Ctrl+S` |
+| Open another PDF / back to the list | `Ctrl+O` / `Ctrl+W` |
+| Full guide | `F1` |
+
+Hovering over any button shows what it does and its shortcut.
+
+### Installation
+
+Requires **Windows** and **Python 3.11** with two libraries:
+
+```
+python -m pip install pymupdf pillow
+```
+
+Then, from a PowerShell console **as administrator**, in the project folder:
+
+```
+powershell -ExecutionPolicy Bypass -File instalar.ps1
+```
+
+It copies the program to `C:\Program Files\Mios\LectorPDF` and creates the
+*Lector PDF* shortcut on the desktop. If Python lives elsewhere:
+`instalar.ps1 -Python "path\to\pythonw.exe"`.
+
+### How the agent reads a returned file
+
+When you save, the message left on the clipboard already includes this command:
+
+```
+"path\to\python.exe" "C:\Program Files\Mios\LectorPDF\leer_devolucion.py" "file-devolucion.pdf"
+```
+
+It returns the clean original text, each mark with its name and the sentence it
+falls on, and an image of every marked page (to see whether a stroke is a
+circle, a strikethrough or an arrow).
+
+### How marks are stored
+
+As **standard PDF annotations**, not pixels burned onto the page: that is why
+they show up in any other PDF reader, the document's text stays intact, and the
+marks can still be edited later. The original PDF is never modified: a new copy
+is always saved (`-devolucion`, numbered).
+
+### Files
+
+| File | What it is |
+|---|---|
+| `lector.pyw` | the program: PDF list, viewer and tools |
+| `anotaciones.py` | saving and reading marks inside the PDF |
+| `leer_devolucion.py` | the returned-file reader the agent runs |
+| `idiomas.py` | every interface text, in Spanish and English |
+| `ayuda.py` | the guide behind the `?` button |
+| `errores.py` | session error log |
+| `autotest.py` | automated tests: `python autotest.py` |
+| `instalar.ps1` | installer |
+
+Nothing is written next to the program: the error log and the chosen language
+go to `%LOCALAPPDATA%\LectorPDF`.

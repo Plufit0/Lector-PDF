@@ -24,169 +24,269 @@ import idiomas
 TITULO = "Lector PDF"
 
 BAJADA = {
-    "es": "Leer un manual de diseno y marcarlo encima para devolverselo al agente.",
-    "en": "Read a design manual and mark it up to send it back to the agent.",
+    "es": "Leé cualquier PDF y marcalo encima para devolvérselo a un agente.",
+    "en": "Read any PDF and mark it up to hand it back to an agent.",
 }
 
 # ("seccion", texto) | ("parrafo", texto) | ("atajo", (tecla, que hace)) | ("nota", texto)
 CONTENIDO = {
     "es": [
-        ("seccion", "Para que es"),
+        ("seccion", "Para qué es"),
         ("parrafo", "Vos ves un solo documento marcado. El agente recibe dos cosas separadas: "
-                    "el texto original del manual y, aparte, cada marca tuya anclada al parrafo "
-                    "sobre el que cae."),
+                    "el texto original del documento y, aparte, cada marca tuya con la parte "
+                    "del texto sobre la que cae."),
 
-        ("seccion", "Abrirlo"),
-        ("parrafo", "Doble clic en el icono \u201cLector PDF\u201d del escritorio (una hoja con un "
-                    "trazo rojo). Se abre mostrando los PDFs de Descargas, el mas nuevo arriba y "
-                    "ya seleccionado. Doble clic o Enter sobre el que quieras."),
-        ("nota", "Si el PDF esta en otra carpeta: boton \u201cOtra carpeta...\u201d, arriba a la derecha."),
+        ("seccion", "Abrir un PDF"),
+        ("parrafo", "Doble clic en el ícono \u201cLector PDF\u201d del escritorio. Se abre mostrando "
+                    "los PDFs de Descargas, el más nuevo arriba y ya elegido. Doble clic o Enter "
+                    "sobre el que quieras."),
+        ("atajo", ("Filtrar", "Escribí parte del nombre y la lista muestra solo esos.")),
+        ("atajo", ("Título de una columna", "Ordena por nombre, fecha o tamaño. Otro clic, al revés.")),
+        ("atajo", ("Otra carpeta\u2026", "Ver los PDFs de otra carpeta.")),
+        ("atajo", ("Abrir archivo\u2026  (Ctrl+O)", "Abrir un PDF de cualquier lado.")),
 
-        ("seccion", "Leer y marcar es la misma postura"),
-        ("parrafo", "No hay que cambiar de modo para pasar de una cosa a la otra:"),
-        ("atajo", ("Rueda del mouse", "Leer. Siempre, hagas lo que hagas. Al llegar al final de "
-                                      "la hoja, el siguiente tiron pasa de pagina.")),
-        ("atajo", ("Arrastrar", "Dibujar. Sin apretar ningun boton antes.")),
+        ("seccion", "Moverse por el documento"),
+        ("atajo", ("Rueda del mouse", "Leer. Siempre, tengas la herramienta que tengas. Al llegar "
+                                      "al final de la hoja, el siguiente giro pasa de página.")),
+        ("atajo", ("Ruedita apretada", "La \u201cmanito\u201d: apretala y mové el mouse para arrastrar "
+                                       "la hoja.")),
+        ("atajo", ("Ctrl + rueda", "Acercar o alejar hacia donde apunta el mouse.")),
+        ("atajo", ("Shift + rueda", "Moverse de costado.")),
+        ("atajo", ("Av Pág / Re Pág", "Página siguiente y anterior. También las flechas, si no "
+                                      "hay nada elegido.")),
+        ("atajo", ("Inicio / Fin", "Principio o final de la hoja.")),
+        ("atajo", ("Ctrl + Inicio / Fin", "Primera o última página.")),
+        ("atajo", ("Número de página", "Se puede escribir y apretar Enter.")),
 
         ("seccion", "Las herramientas"),
-        ("atajo", ("D  o  boton Dibujar", "Dibujar a mano alzada.")),
-        ("atajo", ("T  o  boton Texto", "Escribir una nota: clic donde la querés, escribis, Esc.")),
-        ("atajo", ("S  o  boton Seleccionar", "Agarrar lo ya hecho para moverlo o cambiarlo, y "
-                                              "tambien seleccionar texto del PDF para copiarlo.")),
-        ("atajo", ("B  o  boton Borrar", "Borrar una marca: clic encima de ella.")),
+        ("atajo", ("S  o  Seleccionar", "La de siempre: elegir, mover y cambiar lo que ya marcaste, "
+                                        "y elegir texto del PDF.")),
+        ("atajo", ("D  o  Dibujar", "Dibujar a mano alzada. Queda puesta para hacer varios trazos "
+                                    "seguidos.")),
+        ("atajo", ("T  o  Texto", "Escribir una nota: clic donde la querés, escribís, Esc o clic "
+                                  "afuera. Después vuelve sola a Seleccionar.")),
+        ("atajo", ("B  o  Borrar", "Borrar la marca en la que hagas clic.")),
+        ("nota", "Pasá el mouse por encima de cualquier botón para ver qué hace y su atajo."),
 
-        ("seccion", "Modo Seleccionar, en detalle"),
-        ("atajo", ("Clic sobre una marca", "La selecciona y abre el panel de la derecha.")),
+        ("seccion", "Seleccionar, en detalle"),
+        ("atajo", ("Clic sobre una marca", "La elige y abre el panel de la derecha. En un dibujo "
+                                           "hay que hacer clic sobre el trazo.")),
         ("atajo", ("Arrastrar una marca", "La mueve de lugar.")),
-        ("atajo", ("Ctrl + clic", "Sumar o sacar marcas de la seleccion.")),
-        ("atajo", ("Arrastrar en un vacio", "Selecciona el texto del PDF que toques.")),
-        ("atajo", ("Ctrl + C", "Copia el texto del PDF que hayas seleccionado.")),
-        ("atajo", ("Doble clic en una nota", "Editar lo que dice.")),
-        ("atajo", ("Comentar esta frase", "Con una frase del manual elegida: el programa pasa "
-                                          "a modo Texto y esperas a hacer clic donde queres la "
-                                          "nota. Esa nota queda ATADA a la frase.")),
-        ("atajo", ("Dibujar sobre esta frase", "Lo mismo, pero lo que sigue es un dibujo.")),
-        ("atajo", ("Referencia a...", "En el panel de cualquier marca: \u201cElegir\u201d y despues "
-                                      "arrastras sobre una frase del manual, o haces clic en otra "
-                                      "marca. \u201cQuitar\u201d la desata.")),
-        ("atajo", ("Supr", "Borrar lo seleccionado.")),
-        ("nota", "Con varios dibujos seleccionados aparece \u201cUnificar\u201d: los junta en un solo "
-                 "dibujo, para que el agente los lea como una sola marca y no como tres sueltas."),
-        ("nota", "Atar una marca a una frase es opcional: si no lo haces, todo funciona como "
-                 "siempre. Atada, el agente sabe exactamente a que palabras te referis, sin "
-                 "deducirlo por donde quedo pegada. Esc cancela si te arrepentis."),
+        ("atajo", ("Ctrl o Shift + clic", "Sumar o sacar marcas de la selección.")),
+        ("atajo", ("Clic derecho y arrastrar", "Recuadro verde: elige los dibujos y notas que toca. "
+                                               "Si no toca ninguna marca, elige el texto que "
+                                               "queda adentro. Funciona con cualquier herramienta.")),
+        ("atajo", ("Clic derecho", "Menú con lo que se puede hacer ahí: copiar, comentar, editar, "
+                                   "borrar\u2026")),
+        ("atajo", ("Arrastrar en un vacío", "Elige el texto del PDF que toques.")),
+        ("atajo", ("Ctrl + A", "Elegir todas las marcas de la página.")),
+        ("atajo", ("Flechas", "Con algo elegido, lo mueven de a poquito (con Shift, más).")),
+        ("atajo", ("Supr o Retroceso", "Borrar lo elegido.")),
+        ("atajo", ("Esc", "Soltar lo elegido o cancelar lo que estabas por hacer. Nunca cierra "
+                          "el documento.")),
+        ("atajo", ("Ctrl + C", "Copiar el texto del PDF que hayas elegido.")),
+        ("nota", "Con varios dibujos elegidos aparece \u201cUnificar\u201d: los junta en uno solo, "
+                 "para que el agente los lea como una sola marca y no como tres sueltas."),
 
-        ("seccion", "Lo demas"),
+        ("seccion", "Las notas"),
+        ("atajo", ("Doble clic en una nota", "Editar lo que dice. En modo Texto alcanza con un clic.")),
+        ("atajo", ("Manija del borde derecho", "Con la nota elegida, arrastrala para hacer la nota "
+                                               "más ancha o más angosta, hasta un solo renglón del "
+                                               "ancho de la hoja. El alto se acomoda solo.")),
+        ("atajo", ("Ancho automático", "Botón del panel: la nota vuelve a su ancho de siempre.")),
+        ("nota", "El recuadro amarillo siempre queda ajustado al texto, en pantalla y en el PDF "
+                 "guardado."),
+
+        ("seccion", "Atar una marca a una frase"),
+        ("atajo", ("Comentar esta frase", "Con una frase del documento elegida: pasa a modo Texto "
+                                          "y esperás a hacer clic donde querés la nota. Esa nota "
+                                          "queda ATADA a la frase.")),
+        ("atajo", ("Dibujar sobre esta frase", "Lo mismo, pero lo que sigue es un dibujo.")),
+        ("atajo", ("Referencia a\u2026", "En el panel de cualquier marca: \u201cElegir\u201d y después "
+                                         "arrastrás sobre una frase del documento o hacés clic en "
+                                         "otra marca. \u201cQuitar\u201d la desata.")),
+        ("nota", "Atar es opcional. Atada, el agente sabe exactamente a qué palabras te referís, sin "
+                 "deducirlo por dónde quedó pegada. Al elegir una marca atada, una flecha naranja "
+                 "apunta a su frase. Esc cancela si te arrepentís."),
+
+        ("seccion", "Buscar"),
+        ("atajo", ("Ctrl + F  o  Buscar", "Abre la barra de búsqueda.")),
+        ("atajo", ("Enter  o  F3", "Siguiente resultado. Shift + Enter o Shift + F3, el anterior.")),
+        ("atajo", ("Esc", "Cierra la búsqueda.")),
+        ("nota", "Lo encontrado queda elegido como texto del documento: se lo puede comentar o "
+                 "dibujar encima de una."),
+
+        ("seccion", "Ver"),
+        ("atajo", ("Página  (Ctrl+0)", "La hoja entera.")),
+        ("atajo", ("Ancho  (Ctrl+2)", "La hoja al ancho de la ventana.")),
+        ("atajo", ("Ctrl + 1", "Tamaño real. El porcentaje de al lado del \u201c+\u201d dice el zoom.")),
+        ("atajo", ("+ / \u2212  (Ctrl + / Ctrl \u2212)", "Acercar y alejar.")),
+        ("atajo", ("\U0001F441 Marcas (abajo)", "Oculta tus marcas para leer el documento limpio. "
+                                               "Ocultas no se pueden tocar; vuelven al elegir "
+                                               "Dibujar, Texto o Borrar.")),
+        ("atajo", ("English / Español", "Cambia el idioma del programa en el momento, sin perder "
+                                        "nada.")),
+
+        ("seccion", "Lo demás"),
         ("atajo", ("Ctrl + Z  /  Ctrl + Y", "Deshacer y rehacer.")),
         ("atajo", ("Colores y Grueso", "El color del trazo y de la letra. Rojo es el de entrada.")),
-        ("atajo", ("Pagina / Ancho / + / -", "Ver la hoja entera o agrandada. El numero de pagina "
-                                             "se puede escribir y apretar Enter.")),
-        ("atajo", ("Flechas  o  Re/Av Pag", "Cambiar de pagina.")),
+        ("atajo", ("Ctrl + W  o  < Carpeta", "Volver a la lista de PDFs.")),
+        ("atajo", ("F1  o  ?", "Este instructivo.")),
 
-        ("seccion", "Guardar y pasarmelo"),
-        ("parrafo", "Boton Guardar, o Ctrl+S. Elegis carpeta y nombre; te propone el del manual "
-                    "con \u201c-devolucion\u201d al final. Al guardar, el programa copia solo al "
-                    "portapapeles todo lo que el agente necesita: vas al chat y apretas Ctrl+V. "
-                    "No hace falta explicar nada."),
-        ("nota", "Podes guardar cuantas veces quieras. Si volves a abrir un PDF que ya marcaste, "
-                 "tus marcas siguen ahi y podes agregarle mas."),
+        ("seccion", "Guardar y pasárselo al agente"),
+        ("parrafo", "Botón Guardar, o Ctrl+S. Elegís carpeta y nombre; te propone el del documento "
+                    "con \u201c-devolucion\u201d al final, numerado si ya existe. Al guardar, el programa "
+                    "copia solo al portapapeles todo lo que el agente necesita: vas al chat y "
+                    "apretás Ctrl+V. No hace falta explicar nada."),
+        ("nota", "Podés guardar cuantas veces quieras. Si volvés a abrir un PDF que ya marcaste, tus "
+                 "marcas siguen ahí y podés agregarle más."),
 
         ("seccion", "Cosas que conviene saber"),
-        ("parrafo", "El manual original nunca se toca: siempre se guarda una copia nueva. Las "
-                    "marcas quedan como anotaciones de PDF, no aplastadas contra la hoja, y por "
-                    "eso se pueden seguir editando despues. Si cerras con marcas sin guardar, el "
-                    "programa te avisa. Un clic suelto sin arrastrar no deja ninguna marca."),
+        ("parrafo", "El PDF original nunca se toca: siempre se guarda una copia nueva. Las marcas "
+                    "quedan como anotaciones de PDF, no aplastadas contra la hoja: se ven en "
+                    "cualquier otro lector de PDF y se pueden seguir editando después. Si cerrás "
+                    "con cambios sin guardar, el programa te avisa. Un clic suelto sin arrastrar "
+                    "no deja ninguna marca."),
 
         ("seccion", "Si algo no anda"),
-        ("parrafo", "Si aparece un cartel de error, pasaselo al agente tal cual. El detalle de "
-                    "TODOS los errores de la sesion queda guardado, y el boton \u201cVer errores\u201d "
-                    "de esta ventana te dice donde."),
+        ("parrafo", "Si aparece un cartel de error, pasáselo al agente tal cual. El detalle de "
+                    "TODOS los errores de la sesión queda guardado (y el de la sesión anterior "
+                    "también), y el botón \u201cVer errores\u201d de esta ventana te dice dónde."),
     ],
     "en": [
         ("seccion", "What it is for"),
         ("parrafo", "You see a single marked-up document. The agent receives two separate things: "
-                    "the original text of the manual and, on the side, each of your marks anchored "
-                    "to the paragraph it falls on."),
+                    "the original text of the document and, on the side, each of your marks with "
+                    "the part of the text it falls on."),
 
-        ("seccion", "Opening it"),
-        ("parrafo", "Double-click the \u201cLector PDF\u201d icon on the desktop (a sheet with a red "
-                    "stroke). It opens showing the PDFs in Downloads, the newest at the top and "
-                    "already selected. Double-click or Enter on the one you want."),
-        ("nota", "If the PDF is in another folder: \u201cOther folder...\u201d button, top right."),
+        ("seccion", "Opening a PDF"),
+        ("parrafo", "Double-click the \u201cLector PDF\u201d icon on the desktop. It opens showing the "
+                    "PDFs in Downloads, the newest at the top and already selected. Double-click "
+                    "or Enter on the one you want."),
+        ("atajo", ("Filter", "Type part of the name and the list shows only those.")),
+        ("atajo", ("Column title", "Sorts by name, date or size. Click again to reverse.")),
+        ("atajo", ("Other folder\u2026", "See the PDFs of another folder.")),
+        ("atajo", ("Open file\u2026  (Ctrl+O)", "Open a PDF from anywhere.")),
 
-        ("seccion", "Reading and marking are the same posture"),
-        ("parrafo", "You do not need to switch modes to go from one to the other:"),
-        ("atajo", ("Mouse wheel", "Read. Always, whatever you are doing. When you reach the "
-                                  "bottom of the sheet, the next nudge turns the page.")),
-        ("atajo", ("Drag", "Draw. Without pressing any button first.")),
+        ("seccion", "Moving around the document"),
+        ("atajo", ("Mouse wheel", "Read. Always, whatever tool you have. At the bottom of the "
+                                  "sheet, the next turn goes to the next page.")),
+        ("atajo", ("Pressed wheel", "The \u201chand\u201d: press it and move the mouse to drag the "
+                                    "sheet.")),
+        ("atajo", ("Ctrl + wheel", "Zoom in or out toward the mouse pointer.")),
+        ("atajo", ("Shift + wheel", "Move sideways.")),
+        ("atajo", ("PgDn / PgUp", "Next and previous page. Also the arrows, if nothing is "
+                                  "selected.")),
+        ("atajo", ("Home / End", "Top or bottom of the sheet.")),
+        ("atajo", ("Ctrl + Home / End", "First or last page.")),
+        ("atajo", ("Page number", "Can be typed, then press Enter.")),
 
         ("seccion", "The tools"),
-        ("atajo", ("D  or  Draw button", "Draw freehand.")),
-        ("atajo", ("T  or  Text button", "Write a note: click where you want it, type, Esc.")),
-        ("atajo", ("S  or  Select button", "Grab what you already made to move or change it, and "
-                                           "also select text from the PDF to copy it.")),
-        ("atajo", ("B  or  Erase button", "Erase a mark: click on top of it.")),
+        ("atajo", ("S  or  Select", "The usual one: pick, move and change what you already marked, "
+                                    "and select text from the PDF.")),
+        ("atajo", ("D  or  Draw", "Draw freehand. It stays on so you can make several strokes.")),
+        ("atajo", ("T  or  Text", "Write a note: click where you want it, type, Esc or click "
+                                  "outside. Then it goes back to Select by itself.")),
+        ("atajo", ("B  or  Erase", "Erase the mark you click on.")),
+        ("nota", "Hover over any button to see what it does and its shortcut."),
 
-        ("seccion", "Select mode, in detail"),
-        ("atajo", ("Click on a mark", "Selects it and opens the panel on the right.")),
+        ("seccion", "Select, in detail"),
+        ("atajo", ("Click on a mark", "Selects it and opens the panel on the right. On a drawing, "
+                                      "click on the stroke itself.")),
         ("atajo", ("Drag a mark", "Moves it.")),
-        ("atajo", ("Ctrl + click", "Add or remove marks from the selection.")),
+        ("atajo", ("Ctrl or Shift + click", "Add or remove marks from the selection.")),
+        ("atajo", ("Right-click and drag", "Green box: selects the drawings and notes it touches. "
+                                           "If it touches no mark, it selects the text inside. "
+                                           "Works with any tool.")),
+        ("atajo", ("Right-click", "Menu with what you can do there: copy, comment, edit, "
+                                  "delete\u2026")),
         ("atajo", ("Drag on an empty area", "Selects the PDF text you touch.")),
-        ("atajo", ("Ctrl + C", "Copies the PDF text you have selected.")),
-        ("atajo", ("Double-click a note", "Edit what it says.")),
-        ("atajo", ("Comment on this sentence", "With a sentence of the manual selected: the "
-                                               "program switches to Text mode and waits for you "
-                                               "to click where you want the note. That note "
-                                               "stays TIED to the sentence.")),
+        ("atajo", ("Ctrl + A", "Select all the marks on the page.")),
+        ("atajo", ("Arrows", "With something selected, they nudge it (more with Shift).")),
+        ("atajo", ("Del or Backspace", "Delete what is selected.")),
+        ("atajo", ("Esc", "Clear the selection or cancel what you were about to do. It never "
+                          "closes the document.")),
+        ("atajo", ("Ctrl + C", "Copy the PDF text you selected.")),
+        ("nota", "With several drawings selected, \u201cMerge\u201d appears: it joins them into one, so "
+                 "the agent reads them as a single mark and not as three loose ones."),
+
+        ("seccion", "Notes"),
+        ("atajo", ("Double-click a note", "Edit what it says. In Text mode a single click is "
+                                          "enough.")),
+        ("atajo", ("Right-edge handle", "With the note selected, drag it to make the note wider or "
+                                        "narrower, up to a single line as wide as the page. The "
+                                        "height adjusts by itself.")),
+        ("atajo", ("Automatic width", "Panel button: the note goes back to its usual width.")),
+        ("nota", "The yellow box always fits the text, on screen and in the saved PDF."),
+
+        ("seccion", "Tying a mark to a sentence"),
+        ("atajo", ("Comment on this sentence", "With a sentence of the document selected: switches "
+                                               "to Text mode and waits for you to click where you "
+                                               "want the note. That note stays TIED to the "
+                                               "sentence.")),
         ("atajo", ("Draw over this sentence", "The same, but what follows is a drawing.")),
-        ("atajo", ("Reference to...", "In any mark's panel: \u201cChoose\u201d and then drag over a "
-                                      "sentence of the manual, or click another mark. "
-                                      "\u201cRemove\u201d unties it.")),
-        ("atajo", ("Del", "Delete what is selected.")),
-        ("nota", "With several drawings selected, \u201cMerge\u201d appears: it joins them into a "
-                 "single drawing, so the agent reads them as one mark and not as three loose ones."),
-        ("nota", "Tying a mark to a sentence is optional: if you do not, everything works as "
-                 "always. Tied, the agent knows exactly which words you mean, without deducing it "
-                 "from where it ended up. Esc cancels if you change your mind."),
+        ("atajo", ("Reference to\u2026", "In any mark's panel: \u201cChoose\u201d and then drag over a "
+                                         "sentence of the document or click another mark. "
+                                         "\u201cRemove\u201d unties it.")),
+        ("nota", "Tying is optional. Tied, the agent knows exactly which words you mean, without "
+                 "deducing it from where it ended up. When you select a tied mark, an orange arrow "
+                 "points to its sentence. Esc cancels if you change your mind."),
+
+        ("seccion", "Find"),
+        ("atajo", ("Ctrl + F  or  Find", "Opens the search bar.")),
+        ("atajo", ("Enter  or  F3", "Next result. Shift + Enter or Shift + F3, the previous one.")),
+        ("atajo", ("Esc", "Closes the search.")),
+        ("nota", "What is found stays selected as document text: you can comment on it or draw "
+                 "over it right away."),
+
+        ("seccion", "View"),
+        ("atajo", ("Page  (Ctrl+0)", "The whole sheet.")),
+        ("atajo", ("Width  (Ctrl+2)", "The sheet as wide as the window.")),
+        ("atajo", ("Ctrl + 1", "Actual size. The percentage next to \u201c+\u201d shows the zoom.")),
+        ("atajo", ("+ / \u2212  (Ctrl + / Ctrl \u2212)", "Zoom in and out.")),
+        ("atajo", ("\U0001F441 Marks (bottom)", "Hides your marks to read the clean document. "
+                                               "Hidden marks cannot be touched; they come back "
+                                               "when you choose Draw, Text or Erase.")),
+        ("atajo", ("English / Español", "Changes the program's language on the spot, losing "
+                                        "nothing.")),
 
         ("seccion", "Everything else"),
         ("atajo", ("Ctrl + Z  /  Ctrl + Y", "Undo and redo.")),
         ("atajo", ("Colors and Thick", "The color of the stroke and the text. Red is the default.")),
-        ("atajo", ("Page / Width / + / -", "See the whole sheet or enlarged. The page number can "
-                                           "be typed and Enter pressed.")),
-        ("atajo", ("Arrows  or  PgUp/PgDn", "Change page.")),
+        ("atajo", ("Ctrl + W  or  < Folder", "Back to the list of PDFs.")),
+        ("atajo", ("F1  or  ?", "This guide.")),
 
-        ("seccion", "Save and send it to me"),
+        ("seccion", "Save and hand it to the agent"),
         ("parrafo", "Save button, or Ctrl+S. You choose a folder and name; it suggests the "
-                    "manual's with \u201c-devolucion\u201d at the end. On saving, the program copies "
-                    "to the clipboard by itself everything the agent needs: you go to the chat "
-                    "and press Ctrl+V. No need to explain anything."),
+                    "document's with \u201c-devolucion\u201d at the end, numbered if it already exists. "
+                    "On saving, the program copies to the clipboard everything the agent needs: "
+                    "go to the chat and press Ctrl+V. No need to explain anything."),
         ("nota", "You can save as many times as you want. If you reopen a PDF you already marked, "
                  "your marks are still there and you can add more."),
 
         ("seccion", "Things worth knowing"),
-        ("parrafo", "The original manual is never touched: a new copy is always saved. The marks "
-                    "stay as PDF annotations, not flattened onto the sheet, and that is why they "
-                    "can still be edited later. If you close with unsaved marks, the program "
-                    "warns you. A single click without dragging leaves no mark."),
+        ("parrafo", "The original PDF is never touched: a new copy is always saved. The marks stay "
+                    "as PDF annotations, not flattened onto the sheet: they show up in any other "
+                    "PDF reader and can still be edited later. If you close with unsaved changes, "
+                    "the program warns you. A single click without dragging leaves no mark."),
 
         ("seccion", "If something does not work"),
         ("parrafo", "If an error message appears, pass it to the agent as is. The detail of ALL "
-                    "the errors of the session is saved, and the \u201cView errors\u201d button in "
-                    "this window tells you where."),
+                    "the errors of the session is saved (and the previous session's too), and the "
+                    "\u201cView errors\u201d button in this window tells you where."),
     ],
 }
 
 # Textos de la ventana y del pie del .txt. Igual que el contenido: bilingue y en
 # este mismo modulo, para que el instructivo entero se mantenga en un solo lugar.
 CHROME = {
-    "titulo_ventana": {"es": "Como usar el Lector PDF", "en": "How to use Lector PDF"},
-    "ver_errores": {"es": "Ver errores de esta sesion", "en": "View this session's errors"},
+    "titulo_ventana": {"es": "Cómo usar el Lector PDF", "en": "How to use Lector PDF"},
+    "ver_errores": {"es": "Ver errores de esta sesión", "en": "View this session's errors"},
     "cerrar": {"es": "Cerrar", "en": "Close"},
-    "errores_titulo": {"es": "Errores de esta sesion", "en": "This session's errors"},
+    "errores_titulo": {"es": "Errores de esta sesión", "en": "This session's errors"},
     "no_leer_registro": {"es": "No se pudo leer el registro: %s",
                          "en": "Could not read the log: %s"},
-    "sin_errores": {"es": "No hubo ningun error en esta sesion.\n\n"
+    "sin_errores": {"es": "No hubo ningún error en esta sesión.\n\n"
                           "Cuando haya alguno, queda anotado en:\n%s",
                     "en": "There were no errors in this session.\n\n"
                           "When there is one, it will be logged in:\n%s"},
@@ -194,7 +294,7 @@ CHROME = {
               "en": "The program lives in C:\\Program Files\\Mios\\LectorPDF."},
     "pie_2": {"es": "Los errores quedan anotados en la carpeta LectorPDF de tus datos locales.",
               "en": "The errors are logged in the LectorPDF folder of your local data."},
-    "pie_3": {"es": "Este mismo instructivo esta en el boton \u201c?\u201d del programa.",
+    "pie_3": {"es": "Este mismo instructivo está en el botón \u201c?\u201d del programa.",
               "en": "This same guide is in the program's \u201c?\u201d button."},
 }
 
@@ -243,7 +343,7 @@ def como_texto(idioma=None):
             tecla, que = dato
             # La sangria de continuacion tiene que ser del ancho del prefijo
             # entero, o las lineas siguientes quedan escalonadas y no se lee.
-            prefijo = "  %-26s " % tecla
+            prefijo = "  %-30s " % tecla
             lineas.append(textwrap.fill(que, 78, initial_indent=prefijo,
                                         subsequent_indent=" " * len(prefijo)))
     lineas += ["", "", _chrome("pie_1", idioma), _chrome("pie_2", idioma),
@@ -296,7 +396,7 @@ class Ventana(tk.Toplevel):
                                lmargin2=12, rmargin=12, spacing1=6, spacing3=8,
                                font=("Segoe UI", 10))
         self.txt.tag_configure("tecla", font=("Consolas", 10, "bold"), foreground="#8A4B00")
-        self.txt.tag_configure("que", lmargin1=0, lmargin2=196, spacing3=6)
+        self.txt.tag_configure("que", lmargin1=0, lmargin2=226, spacing3=6)
 
         self._pintar()
         self.txt.config(state="disabled")
@@ -329,7 +429,7 @@ class Ventana(tk.Toplevel):
                 t.insert("end", " " + dato + " \n", "nota")
             else:
                 tecla, que = dato
-                t.insert("end", "%-24s" % tecla, "tecla")
+                t.insert("end", "%-28s" % tecla, "tecla")
                 t.insert("end", que + "\n", "que")
 
     def _mostrar_errores(self, ruta):

@@ -11,17 +11,23 @@ ultimo_error.txt
 *.tmp-lector
 
 # ---------------------------------------------------------------------------
-# ARCHIVOS DEL ASISTENTE (Claude) — REGLA PARA FUTURAS SESIONES
+# ARCHIVOS DEL ASISTENTE (Claude) — REGLA OBLIGATORIA
 # ---------------------------------------------------------------------------
-# Todo lo que genere el asistente y NO sea parte del programa que se instala
-# (notas de sesion, manuales de diseno, PDFs de patch-notes, borradores,
-# planes, resumenes) queda FUERA del repo. Regla estable: si el asistente crea
-# un archivo suyo adicional, va aca o dentro de la carpeta _claude/, nunca al
-# repo. Si mas adelante aparece un tipo de archivo nuevo del asistente, se le
-# agrega su patron a esta seccion.
+# Que es un archivo "del asistente": cualquiera que NO tenga que ver con la
+# funcionalidad del programa. Ejemplos: CLAUDE.md, ESTADO.md, PENDIENTES.md,
+# notas, planes, borradores, informes, PDFs de patch notes o de revision.
+#
+# REGLA: todo archivo del asistente va SIEMPRE ignorado por git. Si el
+# asistente crea uno nuevo que no este cubierto por un patron de aca abajo, en
+# el MISMO paso tiene que agregar su nombre o patron a esta seccion. Nunca se
+# sube un archivo del asistente al repo.
+#
+# Lo mas simple: guardarlos dentro de _claude/, que esta ignorada entera.
 _claude/
-ESTADO.md
 CLAUDE.md
-*-patch-notes*.pdf
-*-manual-de-diseno*.pdf
+ESTADO.md
+PENDIENTES.md
 *.claude.md
+*patch-notes*.pdf
+*patch_notes*.pdf
+*manual-de-diseno*.pdf

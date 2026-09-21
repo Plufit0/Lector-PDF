@@ -5,7 +5,7 @@ autotest.py — prueba el programa entero sin que nadie tenga que hacer clic.
 Abre la ventana de verdad, simula trazos y notas sobre un PDF de prueba,
 guarda, vuelve a abrir lo guardado y comprueba que todo cayo donde debia.
 Es la red de seguridad del programa: si algo de esto falla, la devolucion que
-David mande va a llegar incompleta o corrida de lugar.
+se mande va a llegar incompleta o corrida de lugar.
 
     python autotest.py
 """
@@ -499,7 +499,7 @@ def main():
           "se le puede poner el nombre que uno quiera",
           repr(v.marcas[0][0].get("nombre")))
 
-    print("\n== 8k. Seleccionar y copiar texto del manual ==")
+    print("\n== 8k. Seleccionar y copiar texto del documento ==")
     v.set_modo("seleccionar")
     palabras = v._palabras_pagina()
     check(len(palabras) > 0, "el visor ve las palabras del manual",
@@ -547,7 +547,7 @@ def main():
     primera, ultima = palabras[0], palabras[min(3, len(palabras) - 1)]
     v._seleccionar_texto((primera[0] + 1, primera[1] + 1), (ultima[2] - 1, ultima[3] - 1))
     frase = v._texto_sel
-    check(bool(frase), "hay una frase del manual elegida", repr(frase)[:50])
+    check(bool(frase), "hay una frase del documento elegida", repr(frase)[:50])
 
     check(v.comentar_seleccion(), "\"Comentar esta frase\" arranca el pedido")
     app.update()
@@ -556,7 +556,7 @@ def main():
     check(v._editor is None, "y todavia no abre ningun cuadro: primero se elige el lugar")
     check(v.ancla_pendiente is not None, "se acuerda de la frase mientras tanto")
 
-    # Ahora si: el clic donde David quiera la nota.
+    # Ahora si: el clic donde se quiera la nota.
     v._click(Evento(260, 430))
     app.update()
     check(v._editor is not None, "al hacer clic se abre el cuadro para escribir")
@@ -669,7 +669,7 @@ def main():
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     salida = r.stdout or ""
     check("NOTA SOBRE UNA FRASE" in salida, "el informe la marca como atada a una frase")
-    check(frase[:30] in salida, "y cita la frase del manual", repr(frase[:30]))
+    check(frase[:30] in salida, "y cita la frase del documento", repr(frase[:30]))
 
     print("")
     print("== 8p. El panel no mueve la hoja al abrirse ==")
@@ -732,7 +732,7 @@ def main():
     v._rts_inicio(a_evento(pa[0] - 2, pa[1] - 2))
     v._rts_soltar(a_evento(pb[2] + 2, pb[3] + 2))
     app.update()
-    check(len(v._texto_sel) > 0, "un recuadro sobre un vacio elige el texto del manual",
+    check(len(v._texto_sel) > 0, "un recuadro sobre un vacio elige el texto del documento",
           repr(v._texto_sel)[:50])
 
     print("\n== 8t. La manito (ruedita) agarra y suelta la hoja ==")
@@ -742,6 +742,220 @@ def main():
     v._pan_mover(Evento(400, 340))
     v._pan_fin(Evento(400, 340))
     check(v._pan is None, "y al soltar la suelta")
+
+    def elegir_frase():
+        palabras = v._palabras_pagina()
+        pa, pb = palabras[0], palabras[min(3, len(palabras) - 1)]
+        v._seleccionar_texto((pa[0] + 1, pa[1] + 1), (pb[2] - 1, pb[3] - 1))
+        return v._texto_sel
+
+    class Tecla:
+        """Una tecla falsa, con lo unico que mira App._tecla."""
+
+        def __init__(self, keysym, state=0):
+            self.keysym, self.state = keysym, state
+
+    print("\n== 8u. Una frase abandonada no se pega a la marca siguiente ==")
+    empezar_limpio()
+    v.set_modo("seleccionar")
+    elegir_frase()
+    v.comentar_seleccion()
+    v._click(Evento(260, 430))
+    app.update()
+    v._cerrar_editor(confirmar=True)        # la nota quedo vacia: se abandona
+    app.update()
+    check(v.ancla_pendiente is None, "cerrar una nota vacia abandona la frase pendiente")
+    v.set_modo("texto")
+    v._click(Evento(200, 560))
+    app.update()
+    v._editor.insert("1.0", "nota nueva")
+    v._cerrar_editor(confirmar=True)
+    app.update()
+    nuevas = [m for m in v.marcas.get(0, []) if m.get("texto") == "nota nueva"]
+    check(len(nuevas) == 1 and not nuevas[0].get("ancla"), "y la nota siguiente queda suelta")
+    v.set_modo("seleccionar")
+    elegir_frase()
+    v.dibujar_sobre_seleccion()
+    v.set_modo("texto")                     # se arrepiente y cambia de herramienta
+    check(v.ancla_pendiente is None, "cambiar de herramienta tambien abandona la frase pendiente")
+    v.set_modo("seleccionar")
+
+    print("\n== 8v. Una referencia a medio elegir no cruza de pagina ==")
+    empezar_limpio()
+    v.set_modo("dibujar")
+    trazo(150, 250)
+    v.set_modo("seleccionar")
+    v.seleccion = [0]
+    v.elegir_referencia()
+    v.ir_pagina(1)
+    app.update()
+    check(not v.refiriendo, "al pasar de pagina se cancela la referencia a medio elegir")
+    v.ir_pagina(0)
+    app.update()
+
+    print("\n== 8w. Todo cambio cuenta como 'sin guardar' ==")
+    empezar_limpio()
+    v.set_modo("texto")
+    v._click(Evento(260, 430))
+    app.update()
+    v._editor.insert("1.0", "nota de color")
+    v._cerrar_editor(confirmar=True)
+    app.update()
+    v.firma_guardada = v._firma()
+    check(not v.sucio, "recien guardada no figura como 'sin guardar'")
+    v.seleccion = [len(v.marcas[0]) - 1]
+    v._cambiar_color(COLOR_VERDE)
+    check(v.sucio, "cambiar el color de una nota cuenta como cambio")
+    v.firma_guardada = v._firma()
+    v._refrescar_panel()
+    v.pnl_nombre.delete(0, "end")
+    v.pnl_nombre.insert(0, "otro-nombre")
+    v._renombrar()
+    check(v.sucio, "y renombrarla tambien")
+
+    print("\n== 8x. Un circulo no tapa el texto de adentro ==")
+    import math
+    empezar_limpio()
+    cx, cy, radio = 200.0, 300.0, 60.0
+    circulo = [(cx + radio * math.cos(a / 30.0 * 2 * math.pi),
+                cy + radio * math.sin(a / 30.0 * 2 * math.pi)) for a in range(31)]
+    v.marcas.setdefault(0, []).append({"tipo": "lapiz", "trazos": [circulo],
+                                       "color": (0.88, 0.19, 0.19), "grosor": 2.0})
+    v.render()
+    app.update()
+    check(v._marca_en((cx, cy)) is None, "un clic en el centro de un circulo no lo agarra")
+    check(v._marca_en((cx + radio, cy)) == 0, "un clic sobre el trazo si")
+
+    print("\n== 8y. Con el ojito apagado, las marcas no se tocan ==")
+    v.toggle_ver_marcas()
+    app.update()
+    check(v._marca_en((cx + radio, cy)) is None, "una marca oculta no se puede agarrar")
+    v.set_modo("borrar")
+    check(v.ver_marcas, "elegir Borrar vuelve a mostrar las marcas")
+    v.set_modo("seleccionar")
+
+    print("\n== 8z. Editar una nota atada no le borra la frase; cancelar no la borra ==")
+    empezar_limpio()
+    v.set_modo("seleccionar")
+    frase = elegir_frase()
+    v.comentar_seleccion()
+    v._click(Evento(260, 430))
+    app.update()
+    v._editor.insert("1.0", "nota atada")
+    v._cerrar_editor(confirmar=True)
+    app.update()
+    i = next(k for k, m in enumerate(v.marcas[0]) if m.get("texto") == "nota atada")
+    v.seleccion = [i]
+    v._editar_nota_seleccionada()
+    app.update()
+    v._editor.delete("1.0", "end")
+    v._editor.insert("1.0", "nota atada y editada")
+    v._cerrar_editor(confirmar=True)
+    app.update()
+    editada = [m for m in v.marcas[0] if m.get("texto") == "nota atada y editada"]
+    check(len(editada) == 1 and (editada[0].get("ancla") or {}).get("cita") == frase,
+          "editar una nota atada conserva su frase")
+    n = v.cuenta_marcas()
+    v.seleccion = [v.marcas[0].index(editada[0])]
+    v._editar_nota_seleccionada()
+    app.update()
+    v._editor.insert("end", " y algo mas")
+    v.deshacer()                            # Ctrl+Z mientras se edita = cancelar
+    app.update()
+    check(v.cuenta_marcas() == n and any(m.get("texto") == "nota atada y editada"
+                                         for m in v.marcas[0]),
+          "cancelar la edicion deja la nota como estaba (antes la borraba)")
+
+    print("\n== 8aa. Ancho de la nota con la manija ==")
+    empezar_limpio()
+    v.set_modo("texto")
+    v._click(Evento(120, 430))
+    app.update()
+    v._editor.insert("1.0", "una nota bastante larga que se parte en varios renglones "
+                            "cuando la caja es angosta")
+    v._cerrar_editor(confirmar=True)
+    app.update()
+    i = len(v.marcas[0]) - 1
+    mk = v.marcas[0][i]
+    antes = len(A.lineas_nota(mk["texto"], mk.get("ancho")))
+    v.set_modo("seleccionar")
+    v.seleccion = [i]
+    v.render()
+    app.update()
+    v.firma_guardada = v._firma()
+    v._redimensionando = {"i": i, "movido": False}
+    v._cambiar_ancho_nota(v._pagina().rect.width)
+    v._soltar_seleccionar(None)
+    app.update()
+    mk = v.marcas[0][i]
+    despues = len(A.lineas_nota(mk["texto"], mk.get("ancho")))
+    check(despues < antes, "ensanchar la nota con la manija la deja en menos renglones",
+          "%d -> %d" % (antes, despues))
+    check(v._bbox(mk).x1 <= v._pagina().rect.width + 0.5, "sin salirse de la hoja")
+    check(v.sucio, "y cuenta como cambio sin guardar")
+    r = A.rect_nota(mk["x"], mk["y"], mk["texto"], mk.get("ancho"))
+    mas_ancha = max(A._ancho_texto(l) for l in A.lineas_nota(mk["texto"], mk.get("ancho")))
+    check(abs((r.width - 2 * A.PAD_NOTA) - max(mas_ancha, A.ANCHO_MIN_NOTA - 2 * A.PAD_NOTA)) < 0.5,
+          "la caja mide justo su renglon mas ancho: sin aire a la derecha")
+    v.ancho_automatico()
+    check("ancho" not in v.marcas[0][i], "'Ancho automatico' la devuelve al ancho de siempre")
+
+    print("\n== 8ab. En modo Texto, clic sobre una nota la edita ==")
+    empezar_limpio()
+    v.set_modo("texto")
+    v._click(Evento(260, 430))
+    app.update()
+    v._editor.insert("1.0", "editame")
+    v._cerrar_editor(confirmar=True)
+    app.update()
+    r = v._bbox(v.marcas[0][0])
+    v.set_modo("texto")
+    v._click(a_evento((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2))
+    app.update()
+    check(v._editor is not None and v._editor.get("1.0", "end-1c") == "editame",
+          "abre esa misma nota para editarla, en vez de otra encima")
+    v._cerrar_editor(confirmar=True)
+    app.update()
+    check(v.cuenta_marcas() == 1, "y no suma una nota de mas")
+
+    print("\n== 8ac. Buscar en el documento ==")
+    empezar_limpio()
+    v.abrir_busqueda()
+    v.entrada_buscar.delete(0, "end")
+    v.entrada_buscar.insert(0, "anticheat")
+    v.buscar(1)
+    app.update()
+    check("anticheat" in v._texto_sel, "encuentra el texto y lo deja elegido", repr(v._texto_sel))
+    check(v.lbl_buscar.cget("text").startswith("1 de 3"), "y dice cuantos hay",
+          v.lbl_buscar.cget("text"))
+    v.buscar(1)
+    app.update()
+    check(v.pno == 1, "Enter pasa al siguiente, en la otra pagina", "pagina %d" % (v.pno + 1))
+    v.cerrar_busqueda()
+    v.ir_pagina(0)
+    app.update()
+
+    print("\n== 8ad. Teclas: Esc, Ctrl y flechas ==")
+    empezar_limpio()
+    app._tecla(Tecla("Escape"))
+    check(app.visor is v, "Esc sin nada elegido NO cierra el documento")
+    v.set_modo("dibujar")
+    trazo(150, 250)
+    v.set_modo("seleccionar")
+    v.seleccion = [0]
+    x0 = v.marcas[0][0]["trazos"][0][0][0]
+    app._tecla(Tecla("Right"))
+    check(abs(v.marcas[0][0]["trazos"][0][0][0] - x0 - 1.0) < 0.01,
+          "con algo elegido, la flecha lo mueve 1 pt")
+    app._tecla(Tecla("Escape"))
+    check(v.seleccion == [], "Esc suelta lo elegido")
+    app._tecla(Tecla("d", state=0x0004))
+    check(v.modo == "seleccionar", "Ctrl+D no cambia de herramienta")
+
+    print("\n== 8ae. El mensaje para el chat trae el Python con su ruta ==")
+    msg = lector.mensaje_para_el_chat(os.path.join(tmp, "x.pdf"))
+    check('python.exe"' in msg.lower(), "el comando usa la ruta completa de python.exe",
+          msg[-160:])
 
     # Reponer lo que esperan los pasos siguientes.
     empezar_limpio()
@@ -804,7 +1018,7 @@ def main():
     check(textos_orig == textos_disco, "las notas se leen igual que como se escribieron")
     limpio = A.doc_sin_marcas(destino)
     t = limpio[0].get_text()
-    check("PAGINA 1 DEL MANUAL" in t, "el texto del manual sigue intacto (canal 1)")
+    check("PAGINA 1 DEL MANUAL" in t, "el texto del documento sigue intacto (canal 1)")
     check("Esto no va" not in t, "el canal 1 no viene contaminado con las notas")
     limpio.close()
     d.close()
@@ -830,6 +1044,57 @@ def main():
           "volvio %s" % ([round(x, 2) for x in c],))
     check(not (c[0] > 0.9 and c[1] > 0.9),
           "y no con el color del fondo, que la dejaria invisible")
+
+    print("\n== 11d. Guardar: dibujos atados, nombres sin repetir, ancho elegido ==")
+    base_g = os.path.join(tmp, "g.pdf")
+    d = pymupdf.open()
+    for i in range(2):
+        d.new_page().insert_text((72, 100), "frase de prueba numero %d" % i, fontsize=12)
+    d.save(base_g)
+    d.close()
+    anc = {"rects": [(72, 88, 200, 104)], "cita": "frase de prueba"}
+    marcas_g = {0: [
+        {"tipo": "lapiz", "trazos": [[(80, 200), (300, 200)]], "color": (1, 0, 0),
+         "grosor": 2, "ancla": anc},
+        {"tipo": "texto", "x": 100, "y": 300, "texto": "uno", "color": (0, 0, 0),
+         "nombre": "revisar", "ancla": anc},
+        {"tipo": "texto", "x": 100, "y": 400, "texto": "dos", "color": (0, 0, 0),
+         "nombre": "revisar"},
+        {"tipo": "texto", "x": 100, "y": 500, "texto": "palabra " * 30, "color": (0, 0, 0),
+         "ancho": 480},
+    ]}
+    g_dev = os.path.join(tmp, "g-dev.pdf")
+    A.guardar(base_g, g_dev, marcas_g)
+    d = pymupdf.open(g_dev)
+    m = A.cargar(d)[0]
+    d.close()
+    check(bool(m[0].get("ancla")), "un dibujo atado a una frase vuelve atado al reabrir")
+    check(m[1]["nombre"] != m[2]["nombre"], "dos marcas con el mismo nombre quedan distintas",
+          "%s / %s" % (m[1]["nombre"], m[2]["nombre"]))
+    check(bool(m[1].get("ancla")) and not m[2].get("ancla"),
+          "y la frase queda en la que era, no se cruza")
+    check(abs(m[3].get("ancho", 0) - 480) < 0.1, "el ancho elegido de una nota se guarda")
+    A.guardar(g_dev, os.path.join(tmp, "g-dev2.pdf"),
+              {1: [{"tipo": "texto", "x": 90, "y": 150, "texto": "x", "color": (0, 0, 0)}]})
+    d = pymupdf.open(os.path.join(tmp, "g-dev2.pdf"))
+    check(len(list(d[0].annots())) == 0,
+          "una pagina que quedo sin marcas no arrastra anotaciones viejas")
+    d.close()
+    deriva = g_dev
+    for k in range(4):
+        d = pymupdf.open(deriva)
+        mm = A.cargar(d)
+        d.close()
+        nuevo = os.path.join(tmp, "deriva-%d.pdf" % k)
+        A.guardar(deriva, nuevo, mm)
+        deriva = nuevo
+    d = pymupdf.open(deriva)
+    x_final = A.cargar(d)[0][1]["x"]
+    d.close()
+    check(abs(x_final - 100) < 0.05, "guardar y reabrir varias veces no corre las notas",
+          "x=%.3f" % x_final)
+    check(A.misma_ruta(g_dev, g_dev.upper()),
+          "reconoce el mismo archivo aunque cambien las mayusculas")
 
     print("\n== 11c. Salir con una nota a medio escribir avisa ==")
     v_tmp = app.visor
@@ -915,16 +1180,16 @@ def main():
     check(r.returncode == 0, "el extractor corre sin errores", (r.stderr or "")[:200])
     check("CANAL 1" in salida and "CANAL 2" in salida, "devuelve los dos canales separados")
     # "Esto no va" se deshizo en el paso 7; la nota viva es la de la pagina 3.
-    check("Aca falta el diagrama" in salida, "incluye lo que escribio David")
+    check("Aca falta el diagrama" in salida, "incluye lo que se escribio")
     check("PAGINA 1 DEL MANUAL" in salida, "incluye el texto original del manual")
     check("Parrafo tres punto dos" in salida,
-          "ancla cada marca al texto del manual que tiene debajo")
+          "ancla cada marca al texto del documento que tiene debajo")
     check(os.path.exists(os.path.join(tmp, "png")) and
           len(os.listdir(os.path.join(tmp, "png"))) >= 2,
           "deja las imagenes de las paginas marcadas")
 
     print("\n== 15a. Una nota en un hueco no se le atribuye a la seccion de abajo ==")
-    # Caso tipico: David escribe en el blanco que queda debajo de un parrafo. Si
+    # Caso tipico: se escribe en el blanco que queda debajo de un parrafo. Si
     # el informe dijera solo "a la altura de..." podria nombrar el titulo de la
     # seccion siguiente, y el agente terminaria corrigiendo la parte equivocada
     # del manual. Por eso se muestran los tres vecinos.
@@ -956,7 +1221,7 @@ def main():
     ajeno = os.path.join(tmp, "conajenas.pdf")
     d = pymupdf.open()
     pg = d.new_page()
-    pg.insert_text((72, 100), "texto del manual")
+    pg.insert_text((72, 100), "texto del documento")
     a = pg.add_highlight_annot(pymupdf.Rect(70, 88, 200, 104))
     a.set_info(title="Edge")
     a.update()
@@ -997,7 +1262,7 @@ def main():
         A.abrir_para_editar(protegido)
         check(False, "avisa en castellano que el PDF tiene contrasena", "no aviso nada")
     except Exception as e:
-        check("contrasena" in str(e), "avisa en castellano que el PDF tiene contrasena",
+        check("contraseña" in str(e), "avisa en castellano que el PDF tiene contrasena",
               str(e)[:80])
 
     print("\n== 16. Sin dialogos inesperados ==")

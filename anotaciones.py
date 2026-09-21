@@ -3,7 +3,7 @@
 anotaciones.py — guardar y leer las marcas de una devolucion dentro del PDF.
 
 Modulo compartido por:
-  - lector.pyw          (el programa que usa David para marcar)
+  - lector.pyw          (el programa con el que se marca)
   - leer_devolucion.py  (el que usa el agente para entender la devolucion)
 
 DECISIONES DE DISENO (no cambiar sin leer esto):
@@ -47,7 +47,12 @@ import idiomas
 AUTOR = "Devolucion"
 
 # Marca en los metadatos del PDF: le dice al extractor "esto salio del lector".
-MARCA_PRODUCTOR = "Lector PDF - devolucion de manual de diseno"
+# El extractor busca solo "Lector PDF" (FIRMA_PRODUCTOR), asi reconoce tambien
+# los PDF marcados con versiones viejas, que decian "...de manual de diseno".
+MARCA_PRODUCTOR = "Lector PDF - devolucion"
+FIRMA_PRODUCTOR = "Lector PDF"
+# Grosor de un trazo cuando no dice cual tiene (el "Fino" del visor).
+GROSOR_POR_DEFECTO = 2.0
 
 # Ancho MAXIMO del recuadro de una nota, en puntos PDF. El recuadro real se
 # ajusta al texto (ver medir_nota): una nota de dos palabras no ocupa una caja
@@ -64,16 +69,19 @@ PAD_NOTA = 6.0
 CUERPO_NOTA = 11.0
 # Alto de linea al maquetar una nota.
 ALTO_LINEA = CUERPO_NOTA * 1.30
-# (Historico) caracteres por linea estimados. Ya no se usa para medir: el ancho
-# real de cada linea se calcula con la fuente de verdad en medir_nota.
-CHARS_POR_LINEA = max(8, int(ANCHO_NOTA / (CUERPO_NOTA * 0.52)))
 
 # Fondo de las notas de texto (amarillo papel) y su borde.
 FONDO_NOTA = (1.0, 0.96, 0.70)
+# Grosor del borde de la nota, en puntos PDF. PyMuPDF agranda el Rect de la
+# anotacion medio borde por lado: al reabrir hay que descontarlo (ver cargar).
+BORDE_NOTA = 0.6
+# Clave propia del PDF donde se guarda el ancho elegido de una nota. Los otros
+# visores ignoran las claves que no conocen, asi que no molesta a nadie.
+CLAVE_ANCHO = "LectorAncho"
 
 # Color del subrayado con el que se marca la frase a la que se ata una marca,
 # y su opacidad. Tenue a proposito: tiene que senalar sin ensuciar la hoja ni
-# competir con lo que David escribio.
+# competir con lo que el usuario escribio.
 COLOR_ANCLA = (0.85, 0.65, 0.0)
 OPACIDAD_ANCLA = 0.2
 # Con esto termina el nombre del resaltado, para poder emparejarlo con su nota.
@@ -120,19 +128,30 @@ def _limpiar_nombre(nombre):
 def nombre_por_defecto(tipo, pagina, indice):
     """Nombre legible y estable: 'dibujo-p02-1', 'nota-p05-3'.
 
-    Sirve para que David y el agente puedan hablar de una marca concreta
+    Sirve para que el usuario y el agente puedan hablar de una marca concreta
     ("lo que dice la nota-p05-3") sin tener el documento delante.
     """
     return "%s-p%02d-%d" % ("dibujo" if tipo == "lapiz" else "nota", pagina + 1, indice + 1)
 
 
+_FUENTE_NOTA = None
+
+
 def _ancho_texto(cadena):
-    """Ancho en puntos PDF de una linea, en la fuente de las notas (Helvetica)."""
+    """Ancho en puntos PDF de una linea, en la fuente de las notas (Helvetica).
+
+    Se mide con pymupdf.Font y NO con pymupdf.get_text_length: esta ultima
+    pierde los espacios que siguen a una letra con tilde o una ene, y la caja
+    quedaba mas corta que el texto (se cortaba el final de la nota).
+    """
+    global _FUENTE_NOTA
     try:
-        return pymupdf.get_text_length(cadena, fontname="helv", fontsize=CUERPO_NOTA)
+        if _FUENTE_NOTA is None:
+            _FUENTE_NOTA = pymupdf.Font("helv")
+        return _FUENTE_NOTA.text_length(cadena, fontsize=CUERPO_NOTA)
     except Exception:
         # Estimacion prudente si la medicion real no esta disponible.
-        return len(cadena) * CUERPO_NOTA * 0.5
+        return len(cadena) * CUERPO_NOTA * 0.55
 
 
 def _envolver(parrafo, ancho_util):
@@ -149,37 +168,135 @@ def _envolver(parrafo, ancho_util):
     return lineas
 
 
-def medir_nota(texto):
+def _maquetar_nota(texto, ancho=None):
+    """(ancho_util, lineas): como queda partida una nota dentro de su caja.
+
+    Es la UNICA fuente de verdad del corte de renglones: la usan la caja
+    (medir_nota), el visor para dibujar linea por linea y el PDF guardado. Si
+    cada uno cortara por su cuenta, el texto se saldria de la caja.
+
+    ancho: el ancho que eligio el usuario arrastrando el borde de la nota (en
+    puntos PDF, caja entera). Sin elegir, es ANCHO_NOTA. Es un TOPE: la caja
+    nunca queda mas ancha que su renglon mas largo (fit to size), asi que
+    agrandarlo "desenrolla" renglones hasta que el texto entra en uno solo.
+    """
+    tope_util = max(ANCHO_MIN_NOTA, ancho or ANCHO_NOTA) - 2 * PAD_NOTA
+    # Primero se parte al tope; despues la caja se ajusta al renglon mas ancho
+    # que haya quedado. Si una sola palabra es mas ancha que el tope (no se
+    # puede partir), la caja la envuelve entera en vez de dejarla saliendose.
+    lineas = []
+    for parrafo in (texto or "").split("\n"):
+        lineas.extend(_envolver(parrafo, tope_util) if parrafo else [""])
+    mas_ancha = max((_ancho_texto(l) for l in lineas), default=0.0)
+    return max(ANCHO_MIN_NOTA - 2 * PAD_NOTA, mas_ancha), lineas
+
+
+def lineas_nota(texto, ancho=None):
+    """Los renglones de una nota tal como entran en su caja."""
+    return _maquetar_nota(texto, ancho)[1]
+
+
+# Alto de la letra sobre la linea base, en "em" (Helvetica/Arial). Sirve para
+# ubicar la linea base de cada renglon igual en pantalla y en el PDF.
+ASCENSO = 0.905
+# Alto de renglon "natural" de la letra (Tk lo llama linespace), en em.
+RENGLON_NATURAL = 1.15
+
+
+def tope_renglon(k):
+    """Distancia desde el borde de arriba de la caja hasta el renglon k.
+
+    La usan la pantalla (visor) y el PDF (_dibujar_nota_en_pdf): con la misma
+    cuenta en los dos lados, la nota guardada se ve igual que en pantalla.
+    """
+    return PAD_NOTA + (ALTO_LINEA - RENGLON_NATURAL * CUERPO_NOTA) / 2.0 + k * ALTO_LINEA
+
+
+def _entra_en_la_letra(texto):
+    """True si todos los caracteres existen en la letra de las notas (WinAnsi)."""
+    try:
+        texto.encode("cp1252")
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+def _texto_pdf(cadena):
+    """Una linea lista para escribir en el PDF: WinAnsi y con escapes."""
+    salida = []
+    for c in cadena.encode("cp1252", "replace"):
+        if c in (0x28, 0x29, 0x5C):             # ( ) \  van escapados
+            salida.append("\\" + chr(c))
+        elif 32 <= c < 127:
+            salida.append(chr(c))
+        else:                                     # acentos, enes: en octal
+            salida.append("\\%03o" % c)
+    return "".join(salida)
+
+
+def _dibujar_nota_en_pdf(doc, annot, texto, color, borde, ancho=None):
+    """Redibuja la nota dentro del PDF igual que en pantalla.
+
+    PyMuPDF dibuja el texto de un FreeText casi pegado al borde (1,2 pt), asi que
+    la caja quedaba con aire solo a la derecha y abajo. Aca se reemplaza ese
+    dibujo por uno propio: mismo margen interno, mismo alto de renglon y mismo
+    corte de lineas que el visor. El texto completo sigue en /Contents.
+
+    Solo en paginas sin rotar: en una rotada se deja el dibujo de PyMuPDF, que
+    sabe acomodar la rotacion. Tampoco si el texto trae simbolos que la letra
+    de las notas no tiene (flechas, tildes de "check", alfabetos no latinos):
+    esos saldrian como "?", y PyMuPDF si sabe buscarles otra letra.
+    Si algo falla, tambien queda el de PyMuPDF.
+    """
+    if not _entra_en_la_letra(texto):
+        return
+    try:
+        clase, valor = doc.xref_get_key(annot.xref, "AP/N")
+        if clase != "xref":
+            return
+        xref = int(valor.split()[0])
+        clase, caja = doc.xref_get_key(xref, "BBox")
+        bx0, by0, bx1, by1 = (float(v) for v in caja.strip("[]").split())
+        # El Rect de la anotacion viene agrandado medio borde por lado.
+        m = borde / 2.0
+        x0, y0, x1, y1 = bx0 + m, by0 + m, bx1 - m, by1 - m
+        partes = [
+            "q",
+            "%.4f %.4f %.4f rg" % tuple(FONDO_NOTA),
+            "%.4f %.4f %.4f RG" % tuple(color),
+            "%.2f w" % borde,
+            "%.3f %.3f %.3f %.3f re B" % (x0, y0, x1 - x0, y1 - y0),
+            "BT",
+            "/Helv %.2f Tf" % CUERPO_NOTA,
+            "%.4f %.4f %.4f rg" % tuple(color),
+        ]
+        for k, linea in enumerate(lineas_nota(texto, ancho)):
+            base = y1 - tope_renglon(k) - ASCENSO * CUERPO_NOTA
+            partes.append("1 0 0 1 %.3f %.3f Tm (%s) Tj"
+                          % (x0 + PAD_NOTA, base, _texto_pdf(linea)))
+        partes += ["ET", "Q"]
+        doc.update_stream(xref, "\n".join(partes).encode("latin-1"))
+    except Exception:
+        pass
+
+
+def medir_nota(texto, ancho=None):
     """Ancho y alto del recuadro de una nota, ajustados a su texto (fit to size).
 
-    La caja crece solo lo necesario: se estira con la linea mas larga hasta
-    ANCHO_NOTA y ahi para, partiendo el texto en varias lineas. Asi el fondo
-    amarillo no deja un hueco vacio al lado de una nota corta.
+    La caja crece solo lo necesario: se estira con la linea mas larga hasta el
+    tope (ANCHO_NOTA, o el ancho que eligio el usuario) y ahi para, partiendo el
+    texto en varias lineas. Asi el fondo nunca deja un hueco vacio al costado.
     """
-    parrafos = (texto or "").split("\n")
-    tope_util = ANCHO_NOTA - 2 * PAD_NOTA
-    natural = max((_ancho_texto(p) for p in parrafos), default=0.0)
-    ancho_util = max(ANCHO_MIN_NOTA - 2 * PAD_NOTA, min(tope_util, natural))
-    lineas = 0
-    for parrafo in parrafos:
-        if not parrafo:
-            lineas += 1
-        else:
-            lineas += len(_envolver(parrafo, ancho_util)) or 1
+    ancho_util, lineas = _maquetar_nota(texto, ancho)
     ancho = ancho_util + 2 * PAD_NOTA
-    alto = max(ALTO_LINEA + 2 * PAD_NOTA, lineas * ALTO_LINEA + 2 * PAD_NOTA)
+    alto = max(ALTO_LINEA + 2 * PAD_NOTA, len(lineas) * ALTO_LINEA + 2 * PAD_NOTA)
     return ancho, alto
 
 
-def alto_nota(texto):
-    """Alto en puntos que necesita el recuadro de una nota para ese texto."""
-    return medir_nota(texto)[1]
-
-
-def rect_nota(x, y, texto):
+def rect_nota(x, y, texto, ancho=None):
     """Recuadro PDF de una nota, ajustado a su texto, esquina sup-izq en x,y."""
-    ancho, alto = medir_nota(texto)
-    return pymupdf.Rect(x, y, x + ancho, y + alto)
+    w, h = medir_nota(texto, ancho)
+    return pymupdf.Rect(x, y, x + w, y + h)
 
 
 def bbox_trazo(trazos, grosor):
@@ -194,57 +311,67 @@ def bbox_trazo(trazos, grosor):
 
 # ---------------------------------------------------------------- guardar ----
 
-def _poner_nombre(doc, annot, marca, numero, indice):
+def _poner_nombre(doc, annot, marca):
     """Graba el nombre de la marca en el campo /NM del PDF.
 
     PyMuPDF no deja escribirlo con set_info, hay que tocar el objeto directo.
-    Es el identificador con el que David y el agente pueden referirse a una
-    marca concreta sin tener el documento a la vista.
+    Es el identificador con el que la persona y el agente pueden referirse a
+    una marca concreta sin tener el documento a la vista. Si falla, se avisa
+    (decision 6 del visor: nunca guardar en silencio algo incompleto).
     """
-    nombre = limpiar_nombre(marca.get("nombre")) or nombre_por_defecto(
-        marca["tipo"], numero, indice)
-    marca["nombre"] = nombre
-    try:
-        doc.xref_set_key(annot.xref, "NM", "(%s)" % nombre)
-    except Exception:
-        pass
+    doc.xref_set_key(annot.xref, "NM", "(%s)" % marca["nombre"])
     # Si la marca se refiere a OTRA marca (no a una frase), se guarda el nombre
     # de esa otra en el campo /Subj, que es texto libre del formato PDF.
     ref = limpiar_nombre(marca.get("ref"))
     if ref:
-        try:
-            annot.set_info(title=AUTOR, subject=PREFIJO_REF + ref)
-            annot.update()
-        except Exception:
-            pass
+        annot.set_info(title=AUTOR, subject=PREFIJO_REF + ref)
+        annot.update()
 
 
-def _poner_ancla(doc, pagina, matriz, marca, numero, indice):
-    """Resaltado amarillo sobre la frase a la que esta atada la nota."""
+def _poner_ancla(doc, pagina, matriz, marca):
+    """Subrayado tenue sobre la frase a la que esta atada la marca.
+
+    Sirve igual para notas y para dibujos: antes solo las notas guardaban su
+    frase, y un dibujo hecho con "Dibujar sobre esta frase" perdia la atadura
+    al guardar.
+    """
     ancla = marca.get("ancla")
     if not ancla or not ancla.get("rects"):
         return
-    try:
-        quads = []
-        for (x0, y0, x1, y1) in ancla["rects"]:
-            quads.append((pymupdf.Rect(x0, y0, x1, y1) * matriz).normalize().quad)
-        if not quads:
-            return
-        # Subrayado, no resaltado: el bloque de color encima de las palabras
-        # ensucia la pagina y cuesta leer lo que esta marcado. Una linea abajo
-        # dice lo mismo sin taparlo.
-        annot = pagina.add_underline_annot(quads)
-        annot.set_colors(stroke=COLOR_ANCLA)
-        # En /Contents va la FRASE DEL MANUAL, no la nota: asi el resaltado se
-        # explica solo aunque se lea con otro programa.
-        annot.set_info(title=AUTOR, content=ancla.get("cita", "")[:2000])
-        annot.update(opacity=OPACIDAD_ANCLA)
-        nombre = limpiar_nombre(marca.get("nombre")) or nombre_por_defecto(
-            "texto", numero, indice)
-        doc.xref_set_key(annot.xref, "NM", "(%s%s)" % (nombre, SUFIJO_ANCLA))
-    except Exception:
-        # Que falle el resaltado no puede impedir que se guarde la nota.
-        pass
+    quads = [(pymupdf.Rect(x0, y0, x1, y1) * matriz).normalize().quad
+             for (x0, y0, x1, y1) in ancla["rects"]]
+    # Subrayado, no resaltado: el bloque de color encima de las palabras
+    # ensucia la pagina y cuesta leer lo que esta marcado. Una linea abajo
+    # dice lo mismo sin taparlo.
+    annot = pagina.add_underline_annot(quads)
+    annot.set_colors(stroke=COLOR_ANCLA)
+    # En /Contents va la FRASE DEL DOCUMENTO, no la nota: asi el subrayado se
+    # explica solo aunque se lea con otro programa.
+    annot.set_info(title=AUTOR, content=ancla.get("cita", "")[:2000])
+    annot.update(opacity=OPACIDAD_ANCLA)
+    doc.xref_set_key(annot.xref, "NM", "(%s%s)" % (marca["nombre"], SUFIJO_ANCLA))
+
+
+def _nombres_unicos(marcas):
+    """Le da a cada marca un nombre propio y sin repetir, y lo deja puesto.
+
+    Dos marcas con el mismo nombre se confundian al reabrir (la frase de una
+    terminaba en la otra). Y los nombres por defecto dependian del lugar en la
+    lista ("dibujo-p01-2"): al borrar la primera, una referencia a la segunda
+    pasaba a apuntar a otra. Ahora el nombre se fija la primera vez que se
+    guarda y queda en la marca para siempre.
+    """
+    usados = set()
+    for numero, lista in sorted(marcas.items()):
+        for indice, marca in enumerate(lista):
+            base = limpiar_nombre(marca.get("nombre")) or nombre_por_defecto(
+                marca["tipo"], numero, indice)
+            nombre, n = base, 2
+            while nombre in usados:
+                nombre = "%s-%d" % (base, n)
+                n += 1
+            usados.add(nombre)
+            marca["nombre"] = nombre
 
 
 def _limpiar_propias(pagina):
@@ -263,31 +390,44 @@ def _limpiar_propias(pagina):
             pass
 
 
+def misma_ruta(a, b):
+    """True si dos rutas son el mismo archivo (Windows no distingue mayusculas)."""
+    return (os.path.normcase(os.path.abspath(a))
+            == os.path.normcase(os.path.abspath(b)))
+
+
 def guardar(ruta_origen, ruta_destino, marcas):
     """Escribe las marcas sobre una copia limpia del PDF de origen.
 
     marcas: dict {numero_de_pagina: [marca, ...]}, donde cada marca es
         {"tipo": "lapiz", "trazos": [[(x, y), ...], ...], "color": (r,g,b), "grosor": float}
         {"tipo": "texto", "x": float, "y": float, "texto": str, "color": (r,g,b)}
+    (mas "nombre", "ancla", "ref" y, en las notas, "ancho", todas opcionales).
 
     Siempre se parte del PDF original en disco (no de la copia en memoria del
     visor) para que guardar varias veces no acumule capas ni degrade el archivo.
     Devuelve la ruta escrita.
     """
-    mismo_archivo = os.path.abspath(ruta_origen) == os.path.abspath(ruta_destino)
+    mismo_archivo = misma_ruta(ruta_origen, ruta_destino)
     salida = ruta_destino + ".tmp-lector" if mismo_archivo else ruta_destino
     fallos = []   # marcas que no se pudieron escribir; se avisan, no se ocultan
+    _nombres_unicos(marcas)
 
     doc = pymupdf.open(ruta_origen)
     try:
+        # Se limpian TODAS las paginas, no solo las que tienen marcas: si no,
+        # una marca vieja de una pagina que ahora quedo vacia sobrevivia en el
+        # archivo sin que el visor la mostrara.
+        for pagina in doc:
+            _limpiar_propias(pagina)
         for numero, lista in sorted(marcas.items()):
             if numero < 0 or numero >= doc.page_count:
                 continue
             pagina = doc[numero]
-            _limpiar_propias(pagina)
             # Espacio sin rotar: identidad si la pagina no esta rotada.
             m = pagina.derotation_matrix
-            for indice, marca in enumerate(lista):
+            for marca in lista:
+                que = "pagina %d, %s" % (numero + 1, marca["nombre"])
                 try:
                     if marca["tipo"] == "lapiz":
                         # OJO: add_ink_annot exige pares de float, NO objetos
@@ -305,35 +445,56 @@ def guardar(ruta_origen, ruta_destino, marcas):
                             continue
                         annot = pagina.add_ink_annot(trazos)
                         annot.set_colors(stroke=tuple(marca["color"]))
-                        annot.set_border(width=float(marca.get("grosor", 2.5)))
+                        annot.set_border(width=float(marca.get("grosor", GROSOR_POR_DEFECTO)))
                         annot.set_info(title=AUTOR)
                         annot.update()
-                        _poner_nombre(doc, annot, marca, numero, indice)
                     elif marca["tipo"] == "texto":
                         texto = marca.get("texto", "")
                         if not texto.strip():
                             continue
-                        # Si la nota esta anclada a una frase del manual, se
-                        # escribe ademas un resaltado sobre esas palabras. Esa
-                        # es la parte que le dice al agente A QUE se referia la
-                        # nota, sin que tenga que deducirlo por la posicion.
-                        _poner_ancla(doc, pagina, m, marca, numero, indice)
-                        rect = (rect_nota(marca["x"], marca["y"], texto) * m).normalize()
+                        ancho = marca.get("ancho")
+                        rect = (rect_nota(marca["x"], marca["y"], texto, ancho) * m).normalize()
                         annot = pagina.add_freetext_annot(
                             rect, texto,
                             fontsize=CUERPO_NOTA,
                             fontname="helv",
                             text_color=tuple(marca["color"]),
                             fill_color=FONDO_NOTA,
-                            border_width=0.6,
+                            border_width=BORDE_NOTA,
                         )
                         # /Contents: el texto entero, pase lo que pase con el dibujo.
                         annot.set_info(title=AUTOR, content=texto)
                         annot.update()
-                        _poner_nombre(doc, annot, marca, numero, indice)
+                    else:
+                        continue
                 except Exception as e:
-                    fallos.append("pagina %d, %s: %s" % (numero + 1, marca.get("tipo"), e))
+                    fallos.append("%s: %s" % (que, e))
                     continue
+
+                # Lo que acompana a la marca. Si algo de esto falla, la marca
+                # queda guardada igual, pero se avisa que llego incompleta.
+                try:
+                    _poner_nombre(doc, annot, marca)
+                except Exception as e:
+                    fallos.append("%s (nombre o referencia): %s" % (que, e))
+                try:
+                    # Si la marca esta atada a una frase, se escribe ademas un
+                    # subrayado sobre esas palabras: es lo que le dice al agente
+                    # A QUE se referia, sin deducirlo por la posicion.
+                    _poner_ancla(doc, pagina, m, marca)
+                except Exception as e:
+                    fallos.append("%s (frase atada): %s" % (que, e))
+                if marca["tipo"] == "texto":
+                    # Al final, despues de todo update(): cualquier update
+                    # posterior volveria a poner el dibujo de PyMuPDF.
+                    if pagina.rotation == 0:
+                        _dibujar_nota_en_pdf(doc, annot, texto,
+                                             tuple(marca["color"]), BORDE_NOTA, ancho)
+                    # El ancho que eligio el usuario (arrastrando el borde) va
+                    # en una clave propia: los otros visores la ignoran, y al
+                    # reabrir la nota se parte igual que antes.
+                    if ancho:
+                        doc.xref_set_key(annot.xref, CLAVE_ANCHO, "%.2f" % float(ancho))
 
         meta = dict(doc.metadata or {})
         meta["producer"] = MARCA_PRODUCTOR
@@ -390,7 +551,7 @@ def doc_sin_marcas(ruta):
     Se usa para leer el texto original limpio: get_text() de PyMuPDF incluye
     tambien el texto dibujado por las anotaciones, asi que sin esto el "canal 1"
     (lo que decia el manual) saldria mezclado con el "canal 2" (lo que escribio
-    David encima) y el agente leeria sus propias notas como parte del documento.
+    el usuario encima) y el agente leeria sus propias notas como parte del documento.
     """
     doc = pymupdf.open(ruta)
     for numero in range(doc.page_count):
@@ -501,22 +662,34 @@ def cargar(doc):
                             "tipo": "lapiz",
                             "trazos": trazos,
                             "color": tuple(color[:3]),
-                            "grosor": float((annot.border or {}).get("width") or 2.5),
+                            "grosor": float((annot.border or {}).get("width") or GROSOR_POR_DEFECTO),
                             "nombre": limpiar_nombre(info.get("id", "")),
+                            "ancla": anclas.get(info.get("id", "") or ""),
                             "ref": _leer_ref(info),
                         })
                 elif tipo == "FreeText":
                     rect = (annot.rect * m).normalize()
-                    marcas.setdefault(numero, []).append({
+                    # PyMuPDF agranda el Rect medio borde por lado. Sin
+                    # descontarlo, cada guardar+reabrir corria la nota 0,3 pt
+                    # hacia arriba a la izquierda, y el corrimiento se acumulaba.
+                    medio = float((annot.border or {}).get("width") or 0) / 2.0
+                    nota = {
                         "tipo": "texto",
-                        "x": rect.x0,
-                        "y": rect.y0,
+                        "x": rect.x0 + medio,
+                        "y": rect.y0 + medio,
                         "texto": info.get("content", "") or "",
                         "color": _color_de_la_letra(doc, annot),
                         "nombre": limpiar_nombre(info.get("id", "")),
                         "ancla": anclas.get(info.get("id", "") or ""),
                         "ref": _leer_ref(info),
-                    })
+                    }
+                    try:
+                        clase, valor = doc.xref_get_key(annot.xref, CLAVE_ANCHO)
+                        if clase in ("real", "int") and float(valor) > 0:
+                            nota["ancho"] = float(valor)
+                    except Exception:
+                        pass
+                    marcas.setdefault(numero, []).append(nota)
             except Exception:
                 continue
     return marcas

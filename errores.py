@@ -36,9 +36,10 @@ def carpeta_datos():
 
 
 ARCHIVO = os.path.join(carpeta_datos(), "errores_de_la_ultima_sesion.txt")
+# El de la sesion anterior se guarda aparte al arrancar (ver limpiar).
+ARCHIVO_ANTERIOR = os.path.join(carpeta_datos(), "errores_de_la_sesion_anterior.txt")
 
 _sesion = []          # lista de (hora, titulo, detalle)
-_hora = None          # se inyecta desde el programa: time.strftime
 
 
 def _ahora():
@@ -59,10 +60,6 @@ def anotar(titulo, excepcion=None, detalle_extra=""):
         detalle = (detalle + "\n" + detalle_extra).strip()
     _sesion.append((_ahora(), titulo, detalle))
     _volcar()
-    return len(_sesion)
-
-
-def hubo_errores():
     return len(_sesion)
 
 
@@ -91,10 +88,15 @@ def _volcar():
 
 
 def limpiar():
-    """Arranca una sesion nueva: se borra lo de la sesion anterior."""
+    """Arranca una sesion nueva.
+
+    El registro de la sesion anterior NO se borra: se renombra a
+    ARCHIVO_ANTERIOR. Si el programa se colgo o se cerro mal, lo normal es
+    volver a abrirlo para mandar el registro, y antes eso mismo lo borraba.
+    """
     del _sesion[:]
     try:
         if os.path.exists(ARCHIVO):
-            os.remove(ARCHIVO)
+            os.replace(ARCHIVO, ARCHIVO_ANTERIOR)
     except OSError:
         pass

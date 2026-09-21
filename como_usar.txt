@@ -1,106 +1,172 @@
 LECTOR PDF
 ==========
 
-Leer un manual de diseno y marcarlo encima para devolverselo al agente.
+Leé cualquier PDF y marcalo encima para devolvérselo a un agente.
 
 
-Para que es
+Para qué es
 -----------
 Vos ves un solo documento marcado. El agente recibe dos cosas separadas: el
-texto original del manual y, aparte, cada marca tuya anclada al parrafo sobre
-el que cae.
+texto original del documento y, aparte, cada marca tuya con la parte del texto
+sobre la que cae.
 
 
-Abrirlo
--------
-Doble clic en el icono “Lector PDF” del escritorio (una hoja con un trazo
-rojo). Se abre mostrando los PDFs de Descargas, el mas nuevo arriba y ya
-seleccionado. Doble clic o Enter sobre el que quieras.
+Abrir un PDF
+------------
+Doble clic en el ícono “Lector PDF” del escritorio. Se abre mostrando los PDFs
+de Descargas, el más nuevo arriba y ya elegido. Doble clic o Enter sobre el
+que quieras.
 
-  * Si el PDF esta en otra carpeta: boton “Otra carpeta...”, arriba a la
-    derecha.
+  Filtrar                        Escribí parte del nombre y la lista muestra
+                                 solo esos.
+  Título de una columna          Ordena por nombre, fecha o tamaño. Otro clic,
+                                 al revés.
+  Otra carpeta…                  Ver los PDFs de otra carpeta.
+  Abrir archivo…  (Ctrl+O)       Abrir un PDF de cualquier lado.
 
-
-Leer y marcar es la misma postura
----------------------------------
-No hay que cambiar de modo para pasar de una cosa a la otra:
-
-  Rueda del mouse            Leer. Siempre, hagas lo que hagas. Al llegar al
-                             final de la hoja, el siguiente tiron pasa de
-                             pagina.
-  Arrastrar                  Dibujar. Sin apretar ningun boton antes.
+Moverse por el documento
+------------------------
+  Rueda del mouse                Leer. Siempre, tengas la herramienta que
+                                 tengas. Al llegar al final de la hoja, el
+                                 siguiente giro pasa de página.
+  Ruedita apretada               La “manito”: apretala y mové el mouse para
+                                 arrastrar la hoja.
+  Ctrl + rueda                   Acercar o alejar hacia donde apunta el mouse.
+  Shift + rueda                  Moverse de costado.
+  Av Pág / Re Pág                Página siguiente y anterior. También las
+                                 flechas, si no hay nada elegido.
+  Inicio / Fin                   Principio o final de la hoja.
+  Ctrl + Inicio / Fin            Primera o última página.
+  Número de página               Se puede escribir y apretar Enter.
 
 Las herramientas
 ----------------
-  D  o  boton Dibujar        Dibujar a mano alzada.
-  T  o  boton Texto          Escribir una nota: clic donde la querés,
-                             escribis, Esc.
-  S  o  boton Seleccionar    Agarrar lo ya hecho para moverlo o cambiarlo, y
-                             tambien seleccionar texto del PDF para copiarlo.
-  B  o  boton Borrar         Borrar una marca: clic encima de ella.
-
-Modo Seleccionar, en detalle
-----------------------------
-  Clic sobre una marca       La selecciona y abre el panel de la derecha.
-  Arrastrar una marca        La mueve de lugar.
-  Ctrl + clic                Sumar o sacar marcas de la seleccion.
-  Arrastrar en un vacio      Selecciona el texto del PDF que toques.
-  Ctrl + C                   Copia el texto del PDF que hayas seleccionado.
-  Doble clic en una nota     Editar lo que dice.
-  Comentar esta frase        Con una frase del manual elegida: el programa
-                             pasa a modo Texto y esperas a hacer clic donde
-                             queres la nota. Esa nota queda ATADA a la frase.
-  Dibujar sobre esta frase   Lo mismo, pero lo que sigue es un dibujo.
-  Referencia a...            En el panel de cualquier marca: “Elegir” y
-                             despues arrastras sobre una frase del manual, o
-                             haces clic en otra marca. “Quitar” la desata.
-  Supr                       Borrar lo seleccionado.
-  * Con varios dibujos seleccionados aparece “Unificar”: los junta en un
-    solo dibujo, para que el agente los lea como una sola marca y no como
-    tres sueltas.
-
-  * Atar una marca a una frase es opcional: si no lo haces, todo funciona
-    como siempre. Atada, el agente sabe exactamente a que palabras te
-    referis, sin deducirlo por donde quedo pegada. Esc cancela si te
-    arrepentis.
+  S  o  Seleccionar              La de siempre: elegir, mover y cambiar lo que
+                                 ya marcaste, y elegir texto del PDF.
+  D  o  Dibujar                  Dibujar a mano alzada. Queda puesta para
+                                 hacer varios trazos seguidos.
+  T  o  Texto                    Escribir una nota: clic donde la querés,
+                                 escribís, Esc o clic afuera. Después vuelve
+                                 sola a Seleccionar.
+  B  o  Borrar                   Borrar la marca en la que hagas clic.
+  * Pasá el mouse por encima de cualquier botón para ver qué hace y su
+    atajo.
 
 
-Lo demas
+Seleccionar, en detalle
+-----------------------
+  Clic sobre una marca           La elige y abre el panel de la derecha. En un
+                                 dibujo hay que hacer clic sobre el trazo.
+  Arrastrar una marca            La mueve de lugar.
+  Ctrl o Shift + clic            Sumar o sacar marcas de la selección.
+  Clic derecho y arrastrar       Recuadro verde: elige los dibujos y notas que
+                                 toca. Si no toca ninguna marca, elige el
+                                 texto que queda adentro. Funciona con
+                                 cualquier herramienta.
+  Clic derecho                   Menú con lo que se puede hacer ahí: copiar,
+                                 comentar, editar, borrar…
+  Arrastrar en un vacío          Elige el texto del PDF que toques.
+  Ctrl + A                       Elegir todas las marcas de la página.
+  Flechas                        Con algo elegido, lo mueven de a poquito (con
+                                 Shift, más).
+  Supr o Retroceso               Borrar lo elegido.
+  Esc                            Soltar lo elegido o cancelar lo que estabas
+                                 por hacer. Nunca cierra el documento.
+  Ctrl + C                       Copiar el texto del PDF que hayas elegido.
+  * Con varios dibujos elegidos aparece “Unificar”: los junta en uno solo,
+    para que el agente los lea como una sola marca y no como tres sueltas.
+
+
+Las notas
+---------
+  Doble clic en una nota         Editar lo que dice. En modo Texto alcanza con
+                                 un clic.
+  Manija del borde derecho       Con la nota elegida, arrastrala para hacer la
+                                 nota más ancha o más angosta, hasta un solo
+                                 renglón del ancho de la hoja. El alto se
+                                 acomoda solo.
+  Ancho automático               Botón del panel: la nota vuelve a su ancho de
+                                 siempre.
+  * El recuadro amarillo siempre queda ajustado al texto, en pantalla y en
+    el PDF guardado.
+
+
+Atar una marca a una frase
+--------------------------
+  Comentar esta frase            Con una frase del documento elegida: pasa a
+                                 modo Texto y esperás a hacer clic donde
+                                 querés la nota. Esa nota queda ATADA a la
+                                 frase.
+  Dibujar sobre esta frase       Lo mismo, pero lo que sigue es un dibujo.
+  Referencia a…                  En el panel de cualquier marca: “Elegir” y
+                                 después arrastrás sobre una frase del
+                                 documento o hacés clic en otra marca.
+                                 “Quitar” la desata.
+  * Atar es opcional. Atada, el agente sabe exactamente a qué palabras te
+    referís, sin deducirlo por dónde quedó pegada. Al elegir una marca
+    atada, una flecha naranja apunta a su frase. Esc cancela si te
+    arrepentís.
+
+
+Buscar
+------
+  Ctrl + F  o  Buscar            Abre la barra de búsqueda.
+  Enter  o  F3                   Siguiente resultado. Shift + Enter o Shift +
+                                 F3, el anterior.
+  Esc                            Cierra la búsqueda.
+  * Lo encontrado queda elegido como texto del documento: se lo puede
+    comentar o dibujar encima de una.
+
+
+Ver
+---
+  Página  (Ctrl+0)               La hoja entera.
+  Ancho  (Ctrl+2)                La hoja al ancho de la ventana.
+  Ctrl + 1                       Tamaño real. El porcentaje de al lado del “+”
+                                 dice el zoom.
+  + / −  (Ctrl + / Ctrl −)       Acercar y alejar.
+  👁 Marcas (abajo)               Oculta tus marcas para leer el documento
+                                 limpio. Ocultas no se pueden tocar; vuelven
+                                 al elegir Dibujar, Texto o Borrar.
+  English / Español              Cambia el idioma del programa en el momento,
+                                 sin perder nada.
+
+Lo demás
 --------
-  Ctrl + Z  /  Ctrl + Y      Deshacer y rehacer.
-  Colores y Grueso           El color del trazo y de la letra. Rojo es el de
-                             entrada.
-  Pagina / Ancho / + / -     Ver la hoja entera o agrandada. El numero de
-                             pagina se puede escribir y apretar Enter.
-  Flechas  o  Re/Av Pag      Cambiar de pagina.
+  Ctrl + Z  /  Ctrl + Y          Deshacer y rehacer.
+  Colores y Grueso               El color del trazo y de la letra. Rojo es el
+                                 de entrada.
+  Ctrl + W  o  < Carpeta         Volver a la lista de PDFs.
+  F1  o  ?                       Este instructivo.
 
-Guardar y pasarmelo
--------------------
-Boton Guardar, o Ctrl+S. Elegis carpeta y nombre; te propone el del manual con
-“-devolucion” al final. Al guardar, el programa copia solo al portapapeles
-todo lo que el agente necesita: vas al chat y apretas Ctrl+V. No hace falta
-explicar nada.
+Guardar y pasárselo al agente
+-----------------------------
+Botón Guardar, o Ctrl+S. Elegís carpeta y nombre; te propone el del documento
+con “-devolucion” al final, numerado si ya existe. Al guardar, el programa
+copia solo al portapapeles todo lo que el agente necesita: vas al chat y
+apretás Ctrl+V. No hace falta explicar nada.
 
-  * Podes guardar cuantas veces quieras. Si volves a abrir un PDF que ya
-    marcaste, tus marcas siguen ahi y podes agregarle mas.
+  * Podés guardar cuantas veces quieras. Si volvés a abrir un PDF que ya
+    marcaste, tus marcas siguen ahí y podés agregarle más.
 
 
 Cosas que conviene saber
 ------------------------
-El manual original nunca se toca: siempre se guarda una copia nueva. Las
-marcas quedan como anotaciones de PDF, no aplastadas contra la hoja, y por eso
-se pueden seguir editando despues. Si cerras con marcas sin guardar, el
-programa te avisa. Un clic suelto sin arrastrar no deja ninguna marca.
+El PDF original nunca se toca: siempre se guarda una copia nueva. Las marcas
+quedan como anotaciones de PDF, no aplastadas contra la hoja: se ven en
+cualquier otro lector de PDF y se pueden seguir editando después. Si cerrás
+con cambios sin guardar, el programa te avisa. Un clic suelto sin arrastrar no
+deja ninguna marca.
 
 
 Si algo no anda
 ---------------
-Si aparece un cartel de error, pasaselo al agente tal cual. El detalle de
-TODOS los errores de la sesion queda guardado, y el boton “Ver errores” de
-esta ventana te dice donde.
+Si aparece un cartel de error, pasáselo al agente tal cual. El detalle de
+TODOS los errores de la sesión queda guardado (y el de la sesión anterior
+también), y el botón “Ver errores” de esta ventana te dice dónde.
 
 
 
 El programa vive en C:\Program Files\Mios\LectorPDF.
 Los errores quedan anotados en la carpeta LectorPDF de tus datos locales.
-Este mismo instructivo esta en el boton “?” del programa.
+Este mismo instructivo está en el botón “?” del programa.
