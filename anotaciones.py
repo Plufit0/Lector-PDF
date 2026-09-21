@@ -37,9 +37,10 @@ DECISIONES DE DISENO (no cambiar sin leer esto):
 """
 
 import os
-import textwrap
 
 import pymupdf
+
+import idiomas
 
 # Autor con el que se firman las anotaciones propias. Si esto cambia, los PDFs
 # marcados con la version anterior dejan de reconocerse como propios.
@@ -48,14 +49,23 @@ AUTOR = "Devolucion"
 # Marca en los metadatos del PDF: le dice al extractor "esto salio del lector".
 MARCA_PRODUCTOR = "Lector PDF - devolucion de manual de diseno"
 
-# Ancho del recuadro de una nota de texto, en puntos PDF.
+# Ancho MAXIMO del recuadro de una nota, en puntos PDF. El recuadro real se
+# ajusta al texto (ver medir_nota): una nota de dos palabras no ocupa una caja
+# de 250 pt con el fondo amarillo vacio al lado. Este es solo el tope: pasado
+# este ancho el texto se parte en varias lineas en vez de seguir agrandando la
+# caja. Es tambien el ancho con el que se escribe en pantalla (el editor).
 ANCHO_NOTA = 250.0
+# Ancho MINIMO: por debajo de esto la caja no se achica mas, para que una nota
+# de una sola letra no quede como un cuadradito ilegible.
+ANCHO_MIN_NOTA = 46.0
+# Margen interno entre el texto y el borde de la caja, en puntos PDF.
+PAD_NOTA = 6.0
 # Tamano de letra de las notas, en puntos PDF.
 CUERPO_NOTA = 11.0
 # Alto de linea al maquetar una nota.
 ALTO_LINEA = CUERPO_NOTA * 1.30
-# Caracteres por linea estimados para ANCHO_NOTA a CUERPO_NOTA en Helvetica.
-# Solo se usa para calcular el alto del recuadro; el texto real lo corta PyMuPDF.
+# (Historico) caracteres por linea estimados. Ya no se usa para medir: el ancho
+# real de cada linea se calcula con la fuente de verdad en medir_nota.
 CHARS_POR_LINEA = max(8, int(ANCHO_NOTA / (CUERPO_NOTA * 0.52)))
 
 # Fondo de las notas de texto (amarillo papel) y su borde.
@@ -116,20 +126,60 @@ def nombre_por_defecto(tipo, pagina, indice):
     return "%s-p%02d-%d" % ("dibujo" if tipo == "lapiz" else "nota", pagina + 1, indice + 1)
 
 
-def alto_nota(texto):
-    """Alto en puntos que necesita el recuadro de una nota para ese texto."""
+def _ancho_texto(cadena):
+    """Ancho en puntos PDF de una linea, en la fuente de las notas (Helvetica)."""
+    try:
+        return pymupdf.get_text_length(cadena, fontname="helv", fontsize=CUERPO_NOTA)
+    except Exception:
+        # Estimacion prudente si la medicion real no esta disponible.
+        return len(cadena) * CUERPO_NOTA * 0.5
+
+
+def _envolver(parrafo, ancho_util):
+    """Parte un parrafo en lineas que no superen ancho_util, midiendo de verdad."""
+    lineas, actual = [], ""
+    for palabra in parrafo.split(" "):
+        prueba = palabra if not actual else actual + " " + palabra
+        if not actual or _ancho_texto(prueba) <= ancho_util:
+            actual = prueba
+        else:
+            lineas.append(actual)
+            actual = palabra
+    lineas.append(actual)
+    return lineas
+
+
+def medir_nota(texto):
+    """Ancho y alto del recuadro de una nota, ajustados a su texto (fit to size).
+
+    La caja crece solo lo necesario: se estira con la linea mas larga hasta
+    ANCHO_NOTA y ahi para, partiendo el texto en varias lineas. Asi el fondo
+    amarillo no deja un hueco vacio al lado de una nota corta.
+    """
+    parrafos = (texto or "").split("\n")
+    tope_util = ANCHO_NOTA - 2 * PAD_NOTA
+    natural = max((_ancho_texto(p) for p in parrafos), default=0.0)
+    ancho_util = max(ANCHO_MIN_NOTA - 2 * PAD_NOTA, min(tope_util, natural))
     lineas = 0
-    for parrafo in (texto or "").split("\n"):
+    for parrafo in parrafos:
         if not parrafo:
             lineas += 1
         else:
-            lineas += len(textwrap.wrap(parrafo, CHARS_POR_LINEA)) or 1
-    return max(ALTO_LINEA + 8.0, lineas * ALTO_LINEA + 8.0)
+            lineas += len(_envolver(parrafo, ancho_util)) or 1
+    ancho = ancho_util + 2 * PAD_NOTA
+    alto = max(ALTO_LINEA + 2 * PAD_NOTA, lineas * ALTO_LINEA + 2 * PAD_NOTA)
+    return ancho, alto
+
+
+def alto_nota(texto):
+    """Alto en puntos que necesita el recuadro de una nota para ese texto."""
+    return medir_nota(texto)[1]
 
 
 def rect_nota(x, y, texto):
-    """Recuadro PDF de una nota colocada con su esquina superior izquierda en x,y."""
-    return pymupdf.Rect(x, y, x + ANCHO_NOTA, y + alto_nota(texto))
+    """Recuadro PDF de una nota, ajustado a su texto, esquina sup-izq en x,y."""
+    ancho, alto = medir_nota(texto)
+    return pymupdf.Rect(x, y, x + ancho, y + alto)
 
 
 def bbox_trazo(trazos, grosor):
@@ -327,9 +377,7 @@ def abrir_para_editar(ruta):
         # PyMuPDF diria "document closed or encrypted", que no le dice nada a
         # nadie. Mejor nombrar el problema con palabras.
         doc.close()
-        raise ValueError(
-            "Este PDF esta protegido con contrasena y no se puede marcar.\n"
-            "Habria que abrirlo con la clave y guardar una copia sin proteccion.")
+        raise ValueError(idiomas.t("pdf_con_contrasena"))
     marcas = cargar(doc)
     for numero in range(doc.page_count):
         _limpiar_propias(doc[numero])

@@ -9,13 +9,15 @@ Flujo para el que fue hecho (no desviarse de esto sin pedirlo):
 
 DECISIONES DE DISENO (leer antes de cambiar nada):
 
-1. EL MODO POR DEFECTO ES "DIBUJAR", Y LA RUEDA SIEMPRE HACE SCROLL.
-   Esa es la decision central del programa: leer y marcar son la misma postura,
-   no dos modos entre los que hay que alternar. Arrastrar dibuja, la rueda lee,
-   y nunca hay que tocar un boton para pasar de una cosa a la otra. Si alguna
-   vez se agrega una herramienta, la rueda tiene que seguir leyendo.
+1. EL MODO POR DEFECTO ES "SELECCIONAR", Y LA RUEDA SIEMPRE HACE SCROLL.
+   Decision del Disenador (cambiada a pedido, sept-2026): el estado en reposo es
+   Seleccionar, como en los programas de edicion, para poder elegir, mover y
+   tocar lo ya marcado sin apretar un boton antes. Para marcar se elige Dibujar
+   o Texto; al terminar, el programa vuelve solo a Seleccionar. La rueda SIEMPRE
+   lee (scroll), en cualquier modo: leer nunca depende de la herramienta activa.
+   Si alguna vez se agrega una herramienta, la rueda tiene que seguir leyendo.
 
-2. Al terminar de escribir una nota, el programa vuelve solo a "Dibujar".
+2. Al terminar de escribir una nota, el programa vuelve solo a "Seleccionar".
    Misma razon: el estado en reposo siempre es el mismo.
 
 3. Las coordenadas de las marcas viven en puntos PDF, no en pixeles. El zoom
@@ -37,6 +39,14 @@ import sys
 import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+
+# El modulo de idiomas se importa aparte y ANTES del bloque de abajo: no depende
+# de nada que pueda faltar (solo de 'os'), asi que hasta los carteles de "no pudo
+# arrancar" pueden salir en el idioma elegido. Todo el texto que ve el usuario
+# sale de aca: el programa nunca escribe un cartel a mano (ver idiomas.py).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import idiomas
+from idiomas import t
 
 # Las librerias que pueden faltar se importan aparte: si alguna no esta, el
 # programa tiene que poder DECIRLO por pantalla. Sin esto, el doble clic en el
@@ -106,6 +116,10 @@ FONDO_CANVAS = "#6E7378"
 FONDO_BARRA = "#ECEDEE"
 # Ancho del panel de propiedades. Va superpuesto sobre la hoja, no al costado.
 ANCHO_PANEL = 258
+# Aire arriba y abajo de la hoja dentro del visor, en pixeles de pantalla. Sin
+# esto la hoja queda pegada al borde y cuesta ver donde empieza y termina; un
+# poco de colchon la despega y se lee mas comoda.
+CUSHION_HOJA = 26
 
 
 def mezclar(color, alfa, fondo=(1.0, 1.0, 1.0)):
@@ -151,21 +165,31 @@ class Biblioteca(ttk.Frame):
         self.app = app
         self.carpeta = CARPETA_INICIAL
         self.archivos = []
+        self._construir()
+        self.refrescar()
 
+    def _construir(self):
+        """Arma los widgets. Aparte del __init__ para poder rehacerlos al cambiar
+        de idioma sin perder la carpeta que se estaba mirando (ver retraducir)."""
         barra = ttk.Frame(self, padding=(12, 10))
         barra.pack(fill="x")
         self.lbl = ttk.Label(barra, text="", font=("Segoe UI", 14, "bold"))
         self.lbl.pack(side="left")
-        ttk.Button(barra, text="Otra carpeta...", command=self.elegir_carpeta).pack(side="right")
-        ttk.Button(barra, text="Actualizar", command=self.refrescar).pack(side="right", padx=6)
+        # Boton para pasar de espanol a ingles y al reves.
+        ttk.Button(barra, text=t("boton_idioma"),
+                   command=self.app.cambiar_idioma).pack(side="right", padx=(6, 0))
+        ttk.Button(barra, text=t("bib_otra_carpeta"),
+                   command=self.elegir_carpeta).pack(side="right")
+        ttk.Button(barra, text=t("bib_actualizar"),
+                   command=self.refrescar).pack(side="right", padx=6)
 
         cuerpo = ttk.Frame(self, padding=(12, 0, 12, 8))
         cuerpo.pack(fill="both", expand=True)
         cols = ("nombre", "fecha", "tamano")
         self.tabla = ttk.Treeview(cuerpo, columns=cols, show="headings", selectmode="browse")
-        self.tabla.heading("nombre", text="Archivo")
-        self.tabla.heading("fecha", text="Modificado")
-        self.tabla.heading("tamano", text="Tamano")
+        self.tabla.heading("nombre", text=t("col_archivo"))
+        self.tabla.heading("fecha", text=t("col_modificado"))
+        self.tabla.heading("tamano", text=t("col_tamano"))
         self.tabla.column("nombre", width=620, anchor="w")
         self.tabla.column("fecha", width=170, anchor="w")
         self.tabla.column("tamano", width=110, anchor="e")
@@ -181,18 +205,25 @@ class Biblioteca(ttk.Frame):
         pie.pack(fill="x")
         self.estado = ttk.Label(pie, text="", foreground="#555")
         self.estado.pack(side="left")
-        ttk.Button(pie, text="Abrir", command=self.abrir_seleccion).pack(side="right")
+        ttk.Button(pie, text=t("bib_abrir"), command=self.abrir_seleccion).pack(side="right")
 
+    def retraducir(self):
+        """Rehace los widgets en el idioma nuevo, conservando la carpeta abierta."""
+        carpeta = self.carpeta
+        for w in list(self.winfo_children()):
+            w.destroy()
+        self._construir()
+        self.carpeta = carpeta
         self.refrescar()
 
     def elegir_carpeta(self):
-        c = filedialog.askdirectory(initialdir=self.carpeta, title="Elegir carpeta con PDFs")
+        c = filedialog.askdirectory(initialdir=self.carpeta, title=t("bib_elegir_carpeta_titulo"))
         if c:
             self.carpeta = c
             self.refrescar()
 
     def refrescar(self):
-        self.lbl.config(text="PDFs en %s" % os.path.basename(self.carpeta.rstrip("\\/")) or self.carpeta)
+        self.lbl.config(text=t("bib_pdfs_en") % os.path.basename(self.carpeta.rstrip("\\/")) or self.carpeta)
         for i in self.tabla.get_children():
             self.tabla.delete(i)
         self.archivos = []
@@ -208,7 +239,7 @@ class Biblioteca(ttk.Frame):
                         entradas.append((e.path, e.name, st.st_mtime, st.st_size))
             entradas.sort(key=lambda t: t[2], reverse=True)
         except OSError as err:
-            self.estado.config(text="No se pudo leer la carpeta: %s" % err)
+            self.estado.config(text=t("bib_no_leer_carpeta") % err)
             return
 
         import datetime
@@ -222,9 +253,9 @@ class Biblioteca(ttk.Frame):
             self.tabla.selection_set(primero)
             self.tabla.focus(primero)
             self.tabla.focus_set()
-            self.estado.config(text="%d PDF(s). Doble clic o Enter para abrir." % len(self.archivos))
+            self.estado.config(text=t("bib_cuenta") % len(self.archivos))
         else:
-            self.estado.config(text="No hay PDFs en esta carpeta.")
+            self.estado.config(text=t("bib_sin_pdfs"))
 
     def abrir_seleccion(self):
         sel = self.tabla.selection()
@@ -247,7 +278,7 @@ class Visor(ttk.Frame):
         self.doc, self.marcas = A.abrir_para_editar(ruta)
         if self.doc.page_count < 1:
             self.doc.close()
-            raise ValueError("El PDF no tiene ninguna pagina: puede estar danado.")
+            raise ValueError(t("v_pdf_sin_paginas"))
         self.pno = 0
         self.zoom = 1.0
         # Por defecto se ve la hoja ENTERA, no ajustada al ancho: en un monitor
@@ -257,7 +288,9 @@ class Visor(ttk.Frame):
         # letra grande tiene el boton "Ancho".
         self.modo_zoom = "pagina"          # "pagina" | "ancho" | "libre"
         self.ox = 0                 # corrimiento horizontal para centrar la hoja
-        self.modo = "dibujar"
+        self.oy = CUSHION_HOJA      # colchon vertical arriba de la hoja
+        self.ver_marcas = True      # el "ojito": mostrar u ocultar las marcas propias
+        self.modo = "seleccionar"
         self.color = COLORES[0][1]
         self.grosor = GROSOR_FINO
         # --- modo seleccionar -------------------------------------------
@@ -277,10 +310,19 @@ class Visor(ttk.Frame):
         self._editor_win = None
         self._editor_xy = None
         self._pan = None
+        self._rts = None            # recuadro de seleccion por area (boton derecho)
         # Estado con el que quedo el archivo en disco: todo lo que difiera
         # de esto es un cambio sin guardar.
         self.firma_guardada = self._firma()
 
+        self._construir_widgets()
+        self._actualizar_pie()
+
+    def _construir_widgets(self):
+        """Arma barra, panel, visor y pie. Aparte del __init__ para poder
+        rehacerlos al cambiar de idioma sin cerrar el PDF ni perder las marcas
+        (ver retraducir): las etiquetas de Tkinter se crean una sola vez, asi que
+        cambiar de idioma es rehacer los widgets con el texto nuevo."""
         self._armar_barra()
 
         cuerpo = ttk.Frame(self)
@@ -289,14 +331,27 @@ class Visor(ttk.Frame):
         # El panel de propiedades se arma ahora pero no se muestra: aparece solo
         # cuando hay algo seleccionado, para no comerle ancho a la hoja.
         self.panel = self._armar_panel(cuerpo)
-        self.canvas = tk.Canvas(cuerpo, bg=FONDO_CANVAS, highlightthickness=0, cursor="pencil")
+        self.canvas = tk.Canvas(cuerpo, bg=FONDO_CANVAS, highlightthickness=0, cursor="arrow")
         self.vsb = ttk.Scrollbar(cuerpo, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=self.vsb.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.vsb.pack(side="right", fill="y")
 
-        self.pie = ttk.Label(self, text="", padding=(10, 4), foreground="#333")
-        self.pie.pack(fill="x")
+        # Barra de estado de abajo: el "ojito" para mostrar u ocultar las marcas,
+        # y a su lado una linea corta de estado (marcas y "sin guardar"). Antes
+        # aca habia un cartel largo con toda la ayuda; se saco por ruido.
+        pie_barra = ttk.Frame(self)
+        pie_barra.pack(fill="x")
+        self.btn_ojo = tk.Button(pie_barra, text="", width=12,
+                                 command=self.toggle_ver_marcas)
+        self.btn_ojo.pack(side="left", padx=(8, 4), pady=2)
+        # El texto y el relieve del ojito dependen de si las marcas estan a la
+        # vista: al rehacer los widgets hay que reflejar el estado actual.
+        self.btn_ojo.config(
+            relief="sunken" if self.ver_marcas else "raised",
+            text=t("ojo_marcas") if self.ver_marcas else t("ojo_ocultas"))
+        self.pie = ttk.Label(pie_barra, text="", padding=(6, 4), foreground="#333")
+        self.pie.pack(side="left", fill="x")
 
         self.canvas.bind("<Configure>", self._al_redimensionar)
         self.canvas.bind("<ButtonPress-1>", self._click)
@@ -307,10 +362,35 @@ class Visor(ttk.Frame):
         self.canvas.bind("<Shift-MouseWheel>", self._rueda_horizontal)
         self.canvas.bind("<ButtonPress-2>", self._pan_inicio)
         self.canvas.bind("<B2-Motion>", self._pan_mover)
-        self.canvas.bind("<ButtonRelease-2>", lambda e: setattr(self, "_pan", None))
+        self.canvas.bind("<ButtonRelease-2>", self._pan_fin)
+        # Boton derecho: recuadro de seleccion por area (estilo RTS), en
+        # cualquier modo, sin tener que pasar antes a Seleccionar.
+        self.canvas.bind("<ButtonPress-3>", self._rts_inicio)
+        self.canvas.bind("<B3-Motion>", self._rts_mover)
+        self.canvas.bind("<ButtonRelease-3>", self._rts_soltar)
         self.canvas.focus_set()
 
-        self._actualizar_pie()
+    def retraducir(self):
+        """Rehace los widgets en el idioma nuevo sin cerrar el PDF ni tocar las
+        marcas. Conserva la altura de lectura, el modo activo y la seleccion."""
+        self._cerrar_editor(confirmar=True)
+        y = self.canvas.yview()[0]
+        modo = self.modo
+        seleccion = list(self.seleccion)
+        palabras_sel = self.palabras_sel
+        texto_sel = self._texto_sel
+        for w in list(self.winfo_children()):
+            w.destroy()
+        self._construir_widgets()
+        self.modo = modo
+        self.canvas.config(cursor={"dibujar": "pencil", "texto": "xterm",
+                                   "seleccionar": "arrow", "borrar": "dotbox"}[modo])
+        self.seleccion = seleccion
+        self.palabras_sel = palabras_sel
+        self._texto_sel = texto_sel
+        self._pintar_botones()
+        self.render(y)
+        self._refrescar_panel()
 
     # ------------------------------------------------------------- barra ----
 
@@ -318,12 +398,12 @@ class Visor(ttk.Frame):
         b = ttk.Frame(self, padding=(8, 6))
         b.pack(fill="x")
 
-        ttk.Button(b, text="< Carpeta", width=10, command=self.app.volver_biblioteca).pack(side="left")
+        ttk.Button(b, text=t("v_carpeta"), width=10, command=self.app.volver_biblioteca).pack(side="left")
         ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
 
         self.btn_modo = {}
-        for clave, etiqueta in (("dibujar", "Dibujar"), ("texto", "Texto"),
-                                ("seleccionar", "Seleccionar"), ("borrar", "Borrar")):
+        for clave, etiqueta in (("dibujar", t("modo_dibujar")), ("texto", t("modo_texto")),
+                                ("seleccionar", t("modo_seleccionar")), ("borrar", t("modo_borrar"))):
             bt = tk.Button(b, text=etiqueta, width=11 if clave == "seleccionar" else 8,
                            relief="raised", command=lambda c=clave: self.set_modo(c))
             bt.pack(side="left", padx=2)
@@ -337,16 +417,16 @@ class Visor(ttk.Frame):
             bt.pack(side="left", padx=1)
             self.btn_color.append((bt, col))
 
-        self.btn_grosor = tk.Button(b, text="Grueso", width=7, command=self.toggle_grosor)
+        self.btn_grosor = tk.Button(b, text=t("v_grueso"), width=7, command=self.toggle_grosor)
         self.btn_grosor.pack(side="left", padx=(8, 2))
-        ttk.Button(b, text="Deshacer", width=9, command=self.deshacer).pack(side="left", padx=2)
-        ttk.Button(b, text="Rehacer", width=9, command=self.rehacer).pack(side="left")
+        ttk.Button(b, text=t("v_deshacer"), width=9, command=self.deshacer).pack(side="left", padx=2)
+        ttk.Button(b, text=t("v_rehacer"), width=9, command=self.rehacer).pack(side="left")
 
         ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
         ttk.Button(b, text="-", width=3, command=lambda: self.set_zoom(self.zoom / 1.2)).pack(side="left")
-        self.btn_pagina = tk.Button(b, text="Pagina", width=7, command=self.zoom_pagina)
+        self.btn_pagina = tk.Button(b, text=t("v_pagina"), width=7, command=self.zoom_pagina)
         self.btn_pagina.pack(side="left", padx=2)
-        self.btn_ancho = tk.Button(b, text="Ancho", width=7, command=self.zoom_ancho)
+        self.btn_ancho = tk.Button(b, text=t("v_ancho"), width=7, command=self.zoom_ancho)
         self.btn_ancho.pack(side="left")
         ttk.Button(b, text="+", width=3, command=lambda: self.set_zoom(self.zoom * 1.2)).pack(side="left", padx=2)
 
@@ -363,11 +443,14 @@ class Visor(ttk.Frame):
         self.lbl_total.pack(side="left")
         ttk.Button(b, text=">", width=3, command=lambda: self.ir_pagina(self.pno + 1)).pack(side="left")
 
-        self.btn_guardar = tk.Button(b, text="Guardar", width=10, font=("Segoe UI", 9, "bold"),
+        self.btn_guardar = tk.Button(b, text=t("v_guardar"), width=10, font=("Segoe UI", 9, "bold"),
                                      command=self.guardar)
         self.btn_guardar.pack(side="right")
         tk.Button(b, text="?", width=3, font=("Segoe UI", 10, "bold"),
                   command=self.mostrar_ayuda).pack(side="right", padx=6)
+        # Boton para pasar de espanol a ingles y al reves.
+        tk.Button(b, text=t("boton_idioma"), width=8,
+                  command=self.app.cambiar_idioma).pack(side="right", padx=(0, 6))
 
         self._pintar_botones()
 
@@ -393,15 +476,15 @@ class Visor(ttk.Frame):
 
         # --- con texto del manual elegido -----------------------------------
         self.pnl_texto_pdf = tk.Frame(p, bg="#F4F6F8")
-        tk.Button(self.pnl_texto_pdf, text="Comentar esta frase",
+        tk.Button(self.pnl_texto_pdf, text=t("pnl_comentar"),
                   font=("Segoe UI", 9, "bold"),
                   command=self.comentar_seleccion).pack(fill="x", pady=(0, 3))
-        tk.Button(self.pnl_texto_pdf, text="Dibujar sobre esta frase",
+        tk.Button(self.pnl_texto_pdf, text=t("pnl_dibujar_sobre"),
                   command=self.dibujar_sobre_seleccion).pack(fill="x")
 
         # --- nombre interno --------------------------------------------------
         self.pnl_nombre_bloque = tk.Frame(p, bg="#F4F6F8")
-        tk.Label(self.pnl_nombre_bloque, text="NOMBRE INTERNO", bg="#F4F6F8",
+        tk.Label(self.pnl_nombre_bloque, text=t("pnl_nombre_interno"), bg="#F4F6F8",
                  fg="#7A828C", anchor="w",
                  font=("Segoe UI", 7, "bold")).pack(fill="x")
         fila_n = tk.Frame(self.pnl_nombre_bloque, bg="#F4F6F8")
@@ -409,28 +492,28 @@ class Visor(ttk.Frame):
         self.pnl_nombre = tk.Entry(fila_n, font=("Consolas", 9))
         self.pnl_nombre.pack(side="left", fill="x", expand=True)
         self.pnl_nombre.bind("<Return>", lambda e: self._renombrar())
-        tk.Button(fila_n, text="OK", width=3,
+        tk.Button(fila_n, text=t("pnl_ok"), width=3,
                   command=self._renombrar).pack(side="left", padx=(4, 0))
 
         # --- referencia ------------------------------------------------------
         self.pnl_ref_bloque = tk.Frame(p, bg="#F4F6F8")
-        tk.Label(self.pnl_ref_bloque, text="REFERENCIA A", bg="#F4F6F8", fg="#7A828C",
+        tk.Label(self.pnl_ref_bloque, text=t("pnl_referencia_a"), bg="#F4F6F8", fg="#7A828C",
                  anchor="w", font=("Segoe UI", 7, "bold")).pack(fill="x")
         self.pnl_ref = tk.Entry(self.pnl_ref_bloque, font=("Segoe UI", 8),
                                 state="readonly", readonlybackground="#ECEDEE")
         self.pnl_ref.pack(fill="x", pady=(1, 3))
         fila_r = tk.Frame(self.pnl_ref_bloque, bg="#F4F6F8")
         fila_r.pack(fill="x")
-        self.btn_elegir_ref = tk.Button(fila_r, text="Elegir",
+        self.btn_elegir_ref = tk.Button(fila_r, text=t("pnl_elegir"),
                                         command=self.elegir_referencia)
         self.btn_elegir_ref.pack(side="left", fill="x", expand=True)
-        self.btn_quitar_ref = tk.Button(fila_r, text="Quitar",
+        self.btn_quitar_ref = tk.Button(fila_r, text=t("pnl_quitar"),
                                         command=self.soltar_ancla)
         self.btn_quitar_ref.pack(side="left", fill="x", expand=True, padx=(3, 0))
 
         # --- color -----------------------------------------------------------
         self.pnl_color_bloque = tk.Frame(p, bg="#F4F6F8")
-        tk.Label(self.pnl_color_bloque, text="COLOR", bg="#F4F6F8", fg="#7A828C",
+        tk.Label(self.pnl_color_bloque, text=t("pnl_color"), bg="#F4F6F8", fg="#7A828C",
                  anchor="w", font=("Segoe UI", 7, "bold")).pack(fill="x")
         fila_c = tk.Frame(self.pnl_color_bloque, bg="#F4F6F8")
         fila_c.pack(fill="x", pady=(2, 0))
@@ -441,24 +524,24 @@ class Visor(ttk.Frame):
 
         # --- grosor ----------------------------------------------------------
         self.pnl_grosor = tk.Frame(p, bg="#F4F6F8")
-        tk.Label(self.pnl_grosor, text="GROSOR", bg="#F4F6F8", fg="#7A828C", anchor="w",
+        tk.Label(self.pnl_grosor, text=t("pnl_grosor_titulo"), bg="#F4F6F8", fg="#7A828C", anchor="w",
                  font=("Segoe UI", 7, "bold")).pack(fill="x")
         fila_g = tk.Frame(self.pnl_grosor, bg="#F4F6F8")
         fila_g.pack(fill="x", pady=(2, 0))
-        for etiqueta, valor in (("Fino", GROSOR_FINO), ("Medio", 4.0),
-                                ("Grueso", GROSOR_GRUESO)):
+        for etiqueta, valor in ((t("grosor_fino"), GROSOR_FINO), (t("grosor_medio"), 4.0),
+                                (t("grosor_grueso"), GROSOR_GRUESO)):
             tk.Button(fila_g, text=etiqueta, width=7,
                       command=lambda v=valor: self._cambiar_grosor(v)).pack(side="left", padx=1)
 
         # --- acciones ---------------------------------------------------------
         self.pnl_acciones = tk.Frame(p, bg="#F4F6F8")
-        self.btn_editar_nota = tk.Button(self.pnl_acciones, text="Editar el texto",
+        self.btn_editar_nota = tk.Button(self.pnl_acciones, text=t("pnl_editar_texto"),
                                          command=self._editar_nota_seleccionada)
-        self.btn_unificar = tk.Button(self.pnl_acciones, text="Unificar en un solo dibujo",
+        self.btn_unificar = tk.Button(self.pnl_acciones, text=t("pnl_unificar"),
                                       command=self._unificar)
-        self.btn_borrar = tk.Button(self.pnl_acciones, text="Borrar",
+        self.btn_borrar = tk.Button(self.pnl_acciones, text=t("pnl_borrar"),
                                     command=self._borrar_seleccion)
-        self.btn_soltar = tk.Button(self.pnl_acciones, text="Soltar la seleccion",
+        self.btn_soltar = tk.Button(self.pnl_acciones, text=t("pnl_soltar"),
                                     command=self._soltar_todo)
         return p
 
@@ -483,9 +566,9 @@ class Visor(ttk.Frame):
         """Lo que muestra el cuadro "Referencia a" para esa marca."""
         ancla = mk.get("ancla")
         if ancla and ancla.get("cita"):
-            return "la frase: " + ancla["cita"][:70]
+            return t("ref_la_frase") % ancla["cita"][:70]
         if mk.get("ref"):
-            return "la marca: " + mk["ref"]
+            return t("ref_la_marca") % mk["ref"]
         return ""
 
     def _refrescar_panel(self):
@@ -504,8 +587,8 @@ class Visor(ttk.Frame):
 
         # --- texto del manual elegido: todavia no es una marca ---------------
         if not marcas:
-            self.pnl_titulo.config(text="Texto del manual")
-            self.pnl_datos.config(text=u"%d caracteres\n\u201c%s\u201d"
+            self.pnl_titulo.config(text=t("pnl_texto_manual"))
+            self.pnl_datos.config(text=t("pnl_caracteres_cita")
                                   % (len(self._texto_sel), self._texto_sel[:150]))
             self.pnl_texto_pdf.pack(fill="x", padx=12, pady=(2, 0))
             return
@@ -515,15 +598,15 @@ class Visor(ttk.Frame):
         if uno is not None:
             r = self._bbox(uno)
             if uno["tipo"] == "lapiz":
-                self.pnl_titulo.config(text="Dibujo a mano")
+                self.pnl_titulo.config(text=t("pnl_dibujo_mano"))
                 self.pnl_datos.config(
-                    text=u"Pagina %d  \u00b7  %d trazo(s), %d puntos  \u00b7  %.0f \u00d7 %.0f pt"
+                    text=t("pnl_datos_dibujo")
                     % (self.pno + 1, len(uno["trazos"]),
-                       sum(len(t) for t in uno["trazos"]), r.width, r.height))
+                       sum(len(tr) for tr in uno["trazos"]), r.width, r.height))
             else:
-                self.pnl_titulo.config(text="Nota escrita")
+                self.pnl_titulo.config(text=t("pnl_nota_escrita"))
                 self.pnl_datos.config(
-                    text=u"Pagina %d  \u00b7  %d caracteres\n\u201c%s\u201d"
+                    text=t("pnl_datos_nota")
                     % (self.pno + 1, len(uno["texto"]), uno["texto"][:110]))
             lista = self.marcas.get(self.pno, [])
             nombre = uno.get("nombre") or A.nombre_por_defecto(
@@ -584,7 +667,7 @@ class Visor(ttk.Frame):
         self._cerrar_editor(confirmar=True)
         self.modo = modo
         self.canvas.config(cursor={"dibujar": "pencil", "texto": "xterm",
-                                   "seleccionar": "hand2", "borrar": "dotbox"}[modo])
+                                   "seleccionar": "arrow", "borrar": "dotbox"}[modo])
         if modo != "seleccionar":
             self._limpiar_seleccion()
         self._pintar_botones()
@@ -597,6 +680,18 @@ class Visor(ttk.Frame):
     def toggle_grosor(self):
         self.grosor = GROSOR_FINO if self.grosor == GROSOR_GRUESO else GROSOR_GRUESO
         self._pintar_botones()
+
+    def toggle_ver_marcas(self):
+        """El "ojito": muestra u oculta las marcas propias sobre la hoja.
+
+        Sirve para leer el manual limpio un momento sin perder lo marcado: las
+        marcas siguen ahi, solo se dejan de dibujar hasta volver a apretarlo.
+        """
+        self.ver_marcas = not self.ver_marcas
+        self.btn_ojo.config(
+            relief="sunken" if self.ver_marcas else "raised",
+            text="\U0001F441  Marcas" if self.ver_marcas else "\U0001F441  (ocultas)")
+        self.render(self.canvas.yview()[0])
 
     # ------------------------------------------------------------ render ----
 
@@ -619,7 +714,7 @@ class Visor(ttk.Frame):
         if self.modo_zoom == "ancho":
             z = ancho / rect.width
         elif self.modo_zoom == "pagina":
-            alto = max(200, self.canvas.winfo_height() - 12)
+            alto = max(200, self.canvas.winfo_height() - 12 - 2 * CUSHION_HOJA)
             z = min(ancho / rect.width, alto / rect.height)
         else:
             return
@@ -661,10 +756,12 @@ class Visor(ttk.Frame):
 
         ancho_vista = max(1, self.canvas.winfo_width())
         self.ox = max(0, (ancho_vista - pix.width) // 2)
+        self.oy = CUSHION_HOJA
 
         self.canvas.delete("all")
-        self.canvas.create_image(self.ox, 0, anchor="nw", image=self.tkimg)
-        self.canvas.config(scrollregion=(0, 0, max(ancho_vista, pix.width + self.ox), pix.height))
+        self.canvas.create_image(self.ox, self.oy, anchor="nw", image=self.tkimg)
+        self.canvas.config(scrollregion=(0, 0, max(ancho_vista, pix.width + self.ox),
+                                         pix.height + 2 * CUSHION_HOJA))
         self._dibujar_marcas()
         self.canvas.yview_moveto(y_fraccion)
         self._actualizar_numero()
@@ -689,11 +786,11 @@ class Visor(ttk.Frame):
     # coordenadas: pantalla <-> puntos PDF
     def _a_pdf(self, ex, ey):
         cx = self.canvas.canvasx(ex) - self.ox
-        cy = self.canvas.canvasy(ey)
+        cy = self.canvas.canvasy(ey) - self.oy
         return (cx / self.zoom, cy / self.zoom)
 
     def _a_canvas(self, px, py):
-        return (px * self.zoom + self.ox, py * self.zoom)
+        return (px * self.zoom + self.ox, py * self.zoom + self.oy)
 
     def _dibujar_marcas(self):
         # Primero el texto del manual resaltado, para que quede DEBAJO de las
@@ -703,8 +800,11 @@ class Visor(ttk.Frame):
             x1, y1 = self._a_canvas(r.x1, r.y1)
             self.canvas.create_rectangle(x0, y0, x1, y1, fill="#A8C7F0", outline="",
                                          stipple="gray50", tags="seltexto")
-        for i, marca in enumerate(self.marcas.get(self.pno, [])):
-            self._dibujar_marca(marca, i)
+        # El "ojito" apagado oculta las marcas propias, pero no la seleccion de
+        # texto de arriba ni el recuadro de lo elegido: eso es la interaccion.
+        if self.ver_marcas:
+            for i, marca in enumerate(self.marcas.get(self.pno, [])):
+                self._dibujar_marca(marca, i)
         self._dibujar_seleccion()
 
     def _dibujar_subrayado(self, ancla, tag):
@@ -726,17 +826,35 @@ class Visor(ttk.Frame):
         for i in self.seleccion:
             if not (0 <= i < len(lista)):
                 continue
-            r = self._bbox(lista[i])
+            marca = lista[i]
+            r = self._bbox(marca)
             x0, y0 = self._a_canvas(r.x0, r.y0)
             x1, y1 = self._a_canvas(r.x1, r.y1)
-            self.canvas.create_rectangle(x0 - 3, y0 - 3, x1 + 3, y1 + 3,
+            # Un halo azul tenue relleno detras: hace que lo elegido SALTE a la
+            # vista, no solo un contorno fino que se pierde entre las marcas.
+            self.canvas.create_rectangle(x0 - 5, y0 - 5, x1 + 5, y1 + 5,
+                                         fill="#4DA3FF", outline="", stipple="gray25",
+                                         tags="seleccion")
+            self.canvas.create_rectangle(x0 - 4, y0 - 4, x1 + 4, y1 + 4,
                                          outline="#1971C2", width=2, dash=(4, 3),
                                          tags="seleccion")
-            for (ex, ey) in ((x0 - 3, y0 - 3), (x1 + 3, y0 - 3),
-                             (x0 - 3, y1 + 3), (x1 + 3, y1 + 3)):
+            for (ex, ey) in ((x0 - 4, y0 - 4), (x1 + 4, y0 - 4),
+                             (x0 - 4, y1 + 4), (x1 + 4, y1 + 4)):
                 self.canvas.create_rectangle(ex - 3, ey - 3, ex + 3, ey + 3,
                                              fill="#1971C2", outline="white",
                                              tags="seleccion")
+            # Si lo elegido esta atado a una frase, una flecha marcada apunta
+            # desde la marca HACIA esa frase, para ver de un vistazo a que se
+            # refiere sin leer el panel.
+            ancla = marca.get("ancla")
+            if ancla and ancla.get("rects"):
+                rr = ancla["rects"][0]
+                ex, ey = self._a_canvas((rr[0] + rr[2]) / 2.0, rr[3])
+                sx, sy = self._a_canvas((r.x0 + r.x1) / 2.0, r.y0)
+                self.canvas.create_line(
+                    sx, sy, ex, ey, fill="#E8A200",
+                    width=max(2, int(round(2.4 * self.zoom))),
+                    arrow="last", arrowshape=(12, 15, 5), tags="seleccion")
 
     def _dibujar_marca(self, marca, i):
         tag = "marca%d" % i
@@ -854,15 +972,76 @@ class Visor(ttk.Frame):
         self._agregar(nueva)
 
     def _pan_inicio(self, e):
-        self._pan = (e.x, e.y)
+        # La "manito": apretar la ruedita del mouse agarra la hoja y la arrastra,
+        # como en Acrobat o los editores de imagen. Girar la ruedita sigue siendo
+        # leer; apretarla y mover es mover el papel.
+        self._pan = True
         self.canvas.config(cursor="fleur")
+        self.canvas.scan_mark(e.x, e.y)
 
     def _pan_mover(self, e):
         if not self._pan:
             return
-        dy = e.y - self._pan[1]
-        self.canvas.yview_scroll(-1 if dy > 0 else 1, "units")
-        self._pan = (e.x, e.y)
+        # gain=1: la hoja sigue al mouse punto por punto, sin acelerar.
+        self.canvas.scan_dragto(e.x, e.y, gain=1)
+
+    def _pan_fin(self, _e):
+        self._pan = None
+        self.canvas.config(cursor={"dibujar": "pencil", "texto": "xterm",
+                                   "seleccionar": "arrow", "borrar": "dotbox"}[self.modo])
+
+    # ----------------------------------------------- seleccion por area (RTS) --
+
+    def _rts_inicio(self, e):
+        """Boton derecho: empezar el recuadro verde de seleccion por area."""
+        self._cerrar_editor(confirmar=True)
+        self._rts = {"desde": (e.x, e.y), "id": None}
+
+    def _rts_mover(self, e):
+        if not self._rts:
+            return
+        x0 = self.canvas.canvasx(self._rts["desde"][0])
+        y0 = self.canvas.canvasy(self._rts["desde"][1])
+        x1 = self.canvas.canvasx(e.x)
+        y1 = self.canvas.canvasy(e.y)
+        if self._rts["id"] is not None:
+            self.canvas.delete(self._rts["id"])
+        # Recuadro verde translucido a lo RTS: se dibuja directo, sin re-render,
+        # para que siga al mouse sin tironear.
+        self._rts["id"] = self.canvas.create_rectangle(
+            x0, y0, x1, y1, outline="#2FB344", width=2,
+            fill="#2FB344", stipple="gray12", tags="rts")
+
+    def _rts_soltar(self, e):
+        datos = self._rts
+        self._rts = None
+        if not datos:
+            return
+        if datos["id"] is not None:
+            self.canvas.delete(datos["id"])
+        p0 = self._a_pdf(*datos["desde"])
+        p1 = self._a_pdf(e.x, e.y)
+        area = pymupdf.Rect(min(p0[0], p1[0]), min(p0[1], p1[1]),
+                            max(p0[0], p1[0]), max(p0[1], p1[1]))
+        if area.width < 2 and area.height < 2:
+            return          # un clic derecho suelto no selecciona nada
+        # Pasar a Seleccionar y agarrar todas las marcas que toque el area.
+        lista = self.marcas.get(self.pno, [])
+        elegidas = [i for i, mk in enumerate(lista) if self._bbox(mk).intersects(area)]
+        self.modo = "seleccionar"
+        self.canvas.config(cursor="arrow")
+        self._pintar_botones()
+        if elegidas:
+            self.seleccion = elegidas
+            self.palabras_sel = []
+            self._texto_sel = ""
+        else:
+            # Ninguna marca en el area: entonces se elige el TEXTO del manual que
+            # cae ahi, igual que arrastrando en modo Seleccionar.
+            self._limpiar_seleccion()
+            self._seleccionar_texto(p0, p1)
+        self.render(self.canvas.yview()[0])
+        self._refrescar_panel()
 
     def _rueda(self, e):
         if e.state & 0x0004:        # Ctrl: zoom
@@ -1058,7 +1237,8 @@ class Visor(ttk.Frame):
             else:
                 # Que no se vaya de la hoja: una nota fuera del papel llega
                 # cortada en el PDF y el agente no la ve entera.
-                mk["x"] = min(max(0.0, mk["x"] + dx), max(0.0, rect.width - A.ANCHO_NOTA))
+                ancho_mk = A.rect_nota(mk["x"], mk["y"], mk["texto"]).width
+                mk["x"] = min(max(0.0, mk["x"] + dx), max(0.0, rect.width - ancho_mk))
                 mk["y"] = min(max(0.0, mk["y"] + dy), max(0.0, rect.height - A.ALTO_LINEA))
 
     # --- texto del PDF original -------------------------------------------
@@ -1117,8 +1297,7 @@ class Visor(ttk.Frame):
         self.canvas.config(cursor="xterm")
         self._pintar_botones()
         self.render(self.canvas.yview()[0])
-        self.pie.config(text=("Hace clic donde quieras la nota. Va a quedar atada a: "
-                              "\u201c%s\u201d   (Esc para cancelar)") % cita[:80])
+        self.pie.config(text=t("pie_comentar") % cita[:80])
         return True
 
     def dibujar_sobre_seleccion(self):
@@ -1135,8 +1314,7 @@ class Visor(ttk.Frame):
         self.canvas.config(cursor="pencil")
         self._pintar_botones()
         self.render(self.canvas.yview()[0])
-        self.pie.config(text=("Dibuja donde quieras. El dibujo va a quedar atado a: "
-                              "\u201c%s\u201d   (Esc para cancelar)") % cita[:80])
+        self.pie.config(text=t("pie_dibujar") % cita[:80])
         return True
 
     def elegir_referencia(self):
@@ -1154,8 +1332,7 @@ class Visor(ttk.Frame):
         self.canvas.config(cursor="hand2")
         self._pintar_botones()
         self.render(self.canvas.yview()[0])
-        self.pie.config(text="Elegi la referencia: arrastra sobre una frase del manual, "
-                             "o hace clic en otra marca.   (Esc para cancelar)")
+        self.pie.config(text=t("pie_elegir_ref"))
 
     def _asignar_referencia(self, ancla=None, nombre=None):
         """Cierra el modo referencia, guardando lo elegido en las marcas que esperaban."""
@@ -1181,7 +1358,7 @@ class Visor(ttk.Frame):
         self.render(self.canvas.yview()[0])
         self._marcar_sucio()
         self._refrescar_panel()
-        self.pie.config(text="Referencia guardada.")
+        self.pie.config(text=t("pie_ref_guardada"))
 
     def cancelar_pendientes(self):
         """Esc: abandonar lo que se estaba por atar, sin tocar nada."""
@@ -1213,7 +1390,7 @@ class Visor(ttk.Frame):
         self.app.clipboard_clear()
         self.app.clipboard_append(self._texto_sel)
         self.app.update()
-        self.pie.config(text="Copiado: %d caracteres del manual." % len(self._texto_sel))
+        self.pie.config(text=t("pie_copiado") % len(self._texto_sel))
 
     # --- acciones del panel -----------------------------------------------
 
@@ -1228,7 +1405,7 @@ class Visor(ttk.Frame):
         self._instantanea()
         marcas[0]["nombre"] = nuevo
         self._marcar_sucio()
-        self.pie.config(text="Ahora se llama “%s”." % nuevo)
+        self.pie.config(text=t("pie_renombrado") % nuevo)
 
     def _cambiar_color(self, col):
         marcas = self._marcas_seleccionadas()
@@ -1279,7 +1456,7 @@ class Visor(ttk.Frame):
         self.render(self.canvas.yview()[0])
         self._marcar_sucio()
         self._refrescar_panel()
-        self.pie.config(text="%d dibujos unidos en uno solo (%d trazos)."
+        self.pie.config(text=t("pie_unificados")
                              % (len(partes), len(unido["trazos"])))
 
     def _borrar_seleccion(self):
@@ -1340,7 +1517,7 @@ class Visor(ttk.Frame):
         self._editor.bind("<Escape>", lambda e: (self._cerrar_editor(confirmar=True), "break")[1])
         self._editor.bind("<Control-Return>", lambda e: (self._cerrar_editor(confirmar=True), "break")[1])
         self._editor.bind("<KeyRelease>", self._crecer_editor)
-        self.pie.config(text="Escribiendo nota  —  Esc o clic afuera para confirmar")
+        self.pie.config(text=t("pie_escribiendo"))
 
     def _crecer_editor(self, _e=None):
         if self._editor is None:
@@ -1370,10 +1547,10 @@ class Visor(ttk.Frame):
             self._agregar(nueva)
         self._editor_nombre = ""
         self._editor_ancla = None
-        # Volver a Dibujar: el estado en reposo es siempre el mismo.
+        # Volver a Seleccionar: el estado en reposo es siempre el mismo.
         if self.modo == "texto":
-            self.modo = "dibujar"
-            self.canvas.config(cursor="pencil")
+            self.modo = "seleccionar"
+            self.canvas.config(cursor="arrow")
             self._pintar_botones()
         self._actualizar_pie()
 
@@ -1431,25 +1608,17 @@ class Visor(ttk.Frame):
     def _actualizar_pie(self):
         if self._editor is not None:
             return
-        nombres = {"dibujar": "Dibujar", "texto": "Texto",
-                   "seleccionar": "Seleccionar", "borrar": "Borrar"}
-        if self.modo == "seleccionar":
-            cola = ("clic: elegir  ·  arrastrar: mover  ·  Ctrl+clic: sumar  ·  "
-                    "en un vacio: elegir texto  ·  Ctrl+C copiar  ·  Supr borrar")
-        else:
-            cola = ("rueda: leer  ·  arrastrar: dibujar  ·  D dibujar  T texto  "
-                    "S seleccionar  B borrar  ·  Ctrl+Z/Ctrl+Y  ·  Ctrl+S guardar")
-        self.pie.config(text="%s  |  %d marca(s)%s  |  %s"
-                             % (nombres[self.modo], self.cuenta_marcas(),
-                                "  ·  SIN GUARDAR" if self.sucio else "", cola))
+        self.pie.config(text=t("pie_marcas")
+                             % (self.cuenta_marcas(),
+                                t("pie_sin_guardar") if self.sucio else ""))
 
     # ------------------------------------------------------------ guardar ----
 
     def guardar(self):
         self._cerrar_editor(confirmar=True)
         if self.cuenta_marcas() == 0:
-            if not messagebox.askyesno("Sin marcas",
-                                       "No hay ninguna marca todavia. Guardar igual?",
+            if not messagebox.askyesno(t("dlg_sin_marcas_titulo"),
+                                       t("dlg_sin_marcas_cuerpo"),
                                        parent=self):
                 return
         carpeta = os.path.dirname(self.ruta)
@@ -1458,7 +1627,7 @@ class Visor(ttk.Frame):
             base = base[:-len("-devolucion")]
         sugerida = ruta_libre(carpeta, base)
         destino = filedialog.asksaveasfilename(
-            parent=self, title="Guardar devolucion",
+            parent=self, title=t("dlg_guardar_titulo"),
             initialdir=carpeta, initialfile=os.path.basename(sugerida),
             defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
         if not destino:
@@ -1480,16 +1649,15 @@ class Visor(ttk.Frame):
         except A.MarcasNoGuardadas as err:
             errores.anotar("Guardado incompleto en %s" % os.path.basename(destino), err)
             messagebox.showwarning(
-                "Guardado incompleto",
-                "El archivo se guardo en:\n%s\n\nPERO estas marcas quedaron afuera:\n\n%s"
+                t("dlg_incompleto_titulo"),
+                t("dlg_incompleto_cuerpo")
                 % (destino, "\n".join(err.fallos)), parent=self)
             return
         except Exception as err:
             errores.anotar("No se pudo guardar en %s" % destino, err)
             messagebox.showerror(
-                "No se pudo guardar",
-                "%s\n\nEl PDF anterior quedo intacto y tus marcas siguen en pantalla:\n"
-                "proba con Guardar y otro nombre." % err, parent=self)
+                t("dlg_no_guardar_titulo"),
+                t("dlg_no_guardar_cuerpo") % err, parent=self)
             return
         finally:
             if mismo:
@@ -1524,24 +1692,7 @@ def mensaje_para_el_chat(destino):
     """
     extractor = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "leer_devolucion.py")
-    return (
-        "Te paso una devolucion mia marcada sobre un PDF.\n"
-        "\n"
-        "QUE ES: lei el documento y lo marque encima, a mano: dibujos y notas "
-        "escritas. Algunas marcas estan atadas a una frase concreta del "
-        "documento y otras son sueltas.\n"
-        "\n"
-        "EL ARCHIVO:\n"
-        "%s\n"
-        "\n"
-        "COMO LEERLO: no lo abras como un PDF comun. Corre este comando, que te "
-        "devuelve por separado el texto original del documento y cada marca mia "
-        "con la parte del texto sobre la que cae, mas una imagen de cada pagina "
-        "marcada. Abri esas imagenes: el texto te dice donde cae cada trazo, "
-        "pero no si es un circulo, un tachado o una flecha.\n"
-        "\n"
-        "python \"%s\" \"%s\"\n"
-    ) % (destino, extractor, destino)
+    return t("mensaje_chat") % (destino, extractor, destino)
 
 
 class DialogoGuardado(tk.Toplevel):
@@ -1549,16 +1700,14 @@ class DialogoGuardado(tk.Toplevel):
 
     def __init__(self, app, destino):
         super().__init__(app)
-        self.title("Guardado")
+        self.title(t("dlg_guardado_titulo"))
         self.resizable(False, False)
         self.transient(app)
         marco = ttk.Frame(self, padding=16)
         marco.pack(fill="both", expand=True)
-        ttk.Label(marco, text="Devolucion guardada", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        ttk.Label(marco, text=t("dlg_devolucion_guardada"), font=("Segoe UI", 12, "bold")).pack(anchor="w")
         ttk.Label(marco,
-                  text="Esto ya esta copiado. Pegalo en el chat con Ctrl+V.\n"
-                       "Es un mensaje escrito para el agente: le dice que es esto, donde\n"
-                       "quedo el archivo y con que leerlo. No hace falta que agregues nada.",
+                  text=t("dlg_guardado_info"),
                   foreground="#333", justify="left").pack(anchor="w", pady=(4, 10))
         caja = tk.Text(marco, width=92, height=13, wrap="word", relief="solid", bd=1,
                        font=("Consolas", 9), bg="#F7F7F7")
@@ -1567,16 +1716,16 @@ class DialogoGuardado(tk.Toplevel):
         caja.pack(fill="x")
         fila = ttk.Frame(marco)
         fila.pack(fill="x", pady=(14, 0))
-        ttk.Button(fila, text="Abrir carpeta",
+        ttk.Button(fila, text=t("dlg_abrir_carpeta"),
                    command=lambda: abrir_en_explorador(destino)).pack(side="left")
-        ttk.Button(fila, text="Copiar de nuevo",
+        ttk.Button(fila, text=t("dlg_copiar_de_nuevo"),
                    command=lambda: (app.clipboard_clear(),
                                     app.clipboard_append(mensaje_para_el_chat(destino)),
                                     app.update())).pack(side="left", padx=6)
-        ttk.Button(fila, text="Copiar solo la ruta",
+        ttk.Button(fila, text=t("dlg_copiar_ruta"),
                    command=lambda: (app.clipboard_clear(), app.clipboard_append(destino),
                                     app.update())).pack(side="left")
-        ttk.Button(fila, text="Listo", command=self.destroy).pack(side="right")
+        ttk.Button(fila, text=t("dlg_listo"), command=self.destroy).pack(side="right")
         self.bind("<Return>", lambda e: self.destroy())
         self.bind("<Escape>", lambda e: self.destroy())
         self.update_idletasks()
@@ -1600,7 +1749,7 @@ class App(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("Lector PDF")
+        self.title(t("app_titulo"))
         self.geometry("1280x860")
         try:
             self.state("zoomed")
@@ -1645,6 +1794,28 @@ class App(tk.Tk):
         self.bind("<Control-c>", lambda e: self.visor and self.visor.copiar_texto())
         self.protocol("WM_DELETE_WINDOW", self.cerrar)
 
+    # ---------------------------------------------------------------- idioma --
+
+    def cambiar_idioma(self):
+        """El boton ES/EN: alterna el idioma, lo recuerda y rehace la interfaz.
+
+        Se rehace con after_idle y no en el acto porque el boton que se acaba de
+        apretar vive en la barra que estamos por destruir: primero se termina de
+        atender el clic, despues se rehacen los widgets. No se pierde el PDF
+        abierto ni las marcas: solo cambian los textos."""
+        nuevo = "en" if idiomas.idioma_actual() == "es" else "es"
+        idiomas.set_idioma(nuevo)
+        self.after_idle(self._reconstruir_idioma)
+
+    def _reconstruir_idioma(self):
+        # Se rehacen las dos pantallas si existen: la que se ve ahora y la que
+        # esta escondida, para que al volver ya este en el idioma nuevo.
+        if self.visor is not None:
+            self.visor.retraducir()
+        if self.biblioteca is not None:
+            self.biblioteca.retraducir()
+        self.actualizar_titulo()
+
     def _fallo_no_previsto(self, tipo, valor, traza):
         """Cualquier error que se escape de un boton o de un evento cae aca.
 
@@ -1655,9 +1826,8 @@ class App(tk.Tk):
         try:
             cuantos = errores.anotar("Fallo no previsto en la ventana", valor)
             self.after(50, lambda: messagebox.showerror(
-                "Algo salio mal",
-                "%s\n\nEs el error numero %d de esta sesion.\n"
-                "Quedaron todos anotados en:\n%s"
+                t("app_fallo_titulo"),
+                t("app_fallo_cuerpo")
                 % (valor, cuantos, errores.ARCHIVO), parent=self))
         except Exception:
             pass
@@ -1695,7 +1865,8 @@ class App(tk.Tk):
             visor = Visor(self, ruta)
         except Exception as err:
             errores.anotar("No se pudo abrir %s" % os.path.basename(ruta), err)
-            messagebox.showerror("No se pudo abrir", "%s\n\n%s" % (os.path.basename(ruta), err),
+            messagebox.showerror(t("app_no_abrir_titulo"),
+                                 t("app_no_abrir_cuerpo") % (os.path.basename(ruta), err),
                                  parent=self)
             return
         self._soltar_visor()
@@ -1719,8 +1890,8 @@ class App(tk.Tk):
         if not self.visor.sucio:
             return True
         r = messagebox.askyesnocancel(
-            "Hay marcas sin guardar",
-            "Tenes %d marca(s) sin guardar.\n\nGuardar antes de salir?"
+            t("app_sin_guardar_titulo"),
+            t("app_sin_guardar_cuerpo")
             % self.visor.cuenta_marcas(), parent=self)
         if r is None:
             return False
@@ -1731,9 +1902,9 @@ class App(tk.Tk):
 
     def actualizar_titulo(self):
         if self.visor is None:
-            self.title("Lector PDF  —  %s" % os.path.basename(CARPETA_INICIAL))
+            self.title(t("app_titulo_carpeta") % os.path.basename(CARPETA_INICIAL))
         else:
-            self.title("%s%s  —  Lector PDF"
+            self.title(t("app_titulo_doc")
                        % ("* " if self.visor.sucio else "", os.path.basename(self.visor.ruta)))
 
     def cerrar(self):
@@ -1785,15 +1956,18 @@ class App(tk.Tk):
 
 
 def main():
+    # Recien aca (no al importar el modulo) se lee el idioma que dejo elegido
+    # David. Asi la red de seguridad (autotest.py), que crea la ventana sin pasar
+    # por main(), corre siempre en espanol, que es lo que sus comprobaciones
+    # esperan. Ver idiomas.py, decision 1.
+    idiomas.cargar_idioma_guardado()
     if _ERROR_IMPORT is not None:
         # Ojo: en esta maquina hay mas de un Python instalado y solo uno tiene
         # las librerias. Por eso el mensaje dice CUAL se esta usando: casi
         # siempre el problema es que se arranco con el Python equivocado, no
         # que falte instalar algo.
         raise RuntimeError(
-            "Falta una libreria que el programa necesita:\n\n    %s\n\n"
-            "Se esta usando este Python:\n    %s\n\n"
-            "Se arregla instalandola con:\n    \"%s\" -m pip install pymupdf pillow"
+            t("app_falta_libreria")
             % (_ERROR_IMPORT, sys.executable, sys.executable))
     app = App()
     if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
@@ -1834,9 +2008,8 @@ def _morir_avisando(err):
         raiz = tk.Tk()
         raiz.withdraw()
         messagebox.showerror(
-            "El Lector PDF no pudo arrancar",
-            "%s\n\nEl detalle quedo en:\n%s\n\nPasale este texto al agente y lo arregla."
-            % (err, archivo))
+            t("app_no_arranco_titulo"),
+            t("app_no_arranco_cuerpo") % (err, archivo))
         raiz.destroy()
     except Exception:
         pass

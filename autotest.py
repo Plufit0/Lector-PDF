@@ -93,12 +93,13 @@ def main():
     app.update()
     check(v.doc.page_count == 3, "lee las 3 paginas")
     check(v.zoom > 0.5, "ajusta el zoom al ancho de la ventana", "zoom=%.2f" % v.zoom)
-    check(v.modo == "dibujar", "arranca en modo Dibujar (leer y marcar sin cambiar de modo)")
+    check(v.modo == "seleccionar", "arranca en modo Seleccionar (el estado en reposo, como en los editores)")
     check(v.pno == 0, "y abre en la primera pagina", "abrio en la %d" % (v.pno + 1))
     check(v.entrada_pag.get() == "1", "el numero de pagina coincide con lo que se ve",
           repr(v.entrada_pag.get()))
 
     print("\n== 2. Dibujar un trazo con el mouse ==")
+    v.set_modo("dibujar")   # ahora el reposo es Seleccionar: para marcar se elige Dibujar
     # Trazo horizontal a media pagina, en coordenadas de pantalla.
     y_pantalla = 200
     v._click(Evento(120, y_pantalla))
@@ -113,7 +114,7 @@ def main():
         check(len(trazo) >= 5, "el trazo guardo varios puntos", "%d puntos" % len(trazo))
         # Verificar la conversion pantalla -> PDF con el zoom y el centrado reales.
         esperado_x = (v.canvas.canvasx(120) - v.ox) / v.zoom
-        esperado_y = (v.canvas.canvasy(y_pantalla)) / v.zoom
+        esperado_y = (v.canvas.canvasy(y_pantalla) - v.oy) / v.zoom
         check(abs(trazo[0][0] - esperado_x) < 0.6 and abs(trazo[0][1] - esperado_y) < 0.6,
               "el primer punto cayo en el lugar correcto del PDF",
               "guardado (%.1f, %.1f) esperado (%.1f, %.1f)" % (trazo[0][0], trazo[0][1], esperado_x, esperado_y))
@@ -201,7 +202,7 @@ def main():
     if notas:
         check(notas[0]["texto"] == "Esto no va.\nRevisar el calculo entero.",
               "la nota conserva el texto completo, con sus saltos de linea")
-    check(v.modo == "dibujar", "vuelve solo a Dibujar despues de escribir")
+    check(v.modo == "seleccionar", "vuelve solo a Seleccionar despues de escribir")
 
     print("\n== 6. Una nota vacia no ensucia el PDF ==")
     antes = v.cuenta_marcas()
@@ -570,7 +571,7 @@ def main():
               "la frase guardada es exactamente la que se eligio",
               repr(notas[0]["ancla"]["cita"])[:50])
     check(v.ancla_pendiente is None, "y la frase pendiente se consume, no queda pegada")
-    check(v.modo == "dibujar", "despues vuelve solo a Dibujar")
+    check(v.modo == "seleccionar", "despues vuelve solo a Seleccionar")
 
     print("")
     print("== 8m. Sin elegir texto, la nota sigue siendo suelta (nada cambia) ==")
@@ -687,6 +688,60 @@ def main():
           "y la hoja NO cambia de ancho: el panel va superpuesto",
           "%d -> %d" % (ancho_antes, v.canvas.winfo_width()))
     check(abs(v.zoom - zoom_antes) < 0.001, "ni cambia el zoom, asi que no salta de lugar")
+
+    print("\n== 8q. Fit to size: el recuadro de la nota se ajusta al texto ==")
+    corta = A.rect_nota(100, 100, "ok")
+    larga = A.rect_nota(100, 100, "una nota bastante mas larga que la otra para comparar")
+    check(corta.width < larga.width, "una nota corta ocupa menos ancho que una larga",
+          "corta=%.0f larga=%.0f" % (corta.width, larga.width))
+    check(corta.width >= A.ANCHO_MIN_NOTA - 0.5, "pero nunca baja del minimo legible",
+          "%.0f" % corta.width)
+    check(larga.width <= A.ANCHO_NOTA + 0.5, "ni pasa del ancho maximo", "%.0f" % larga.width)
+    parrafo = A.rect_nota(100, 100, "palabra " * 40)
+    check(parrafo.width <= A.ANCHO_NOTA + 0.5 and parrafo.height > larga.height,
+          "un texto largo se parte en varias lineas en vez de seguir ensanchando")
+
+    print("\n== 8r. El ojito muestra y oculta las marcas sin borrarlas ==")
+    empezar_limpio()
+    v.set_modo("dibujar")
+    trazo(150, 250)
+    n = v.cuenta_marcas()
+    v.toggle_ver_marcas()
+    app.update()
+    check(not v.ver_marcas and v.cuenta_marcas() == n,
+          "apagar el ojito oculta las marcas pero no las borra", "quedan %d" % v.cuenta_marcas())
+    v.toggle_ver_marcas()
+    app.update()
+    check(v.ver_marcas and v.cuenta_marcas() == n, "y volver a encenderlo las trae de vuelta")
+
+    print("\n== 8s. Boton derecho: recuadro por area (estilo RTS) ==")
+    empezar_limpio()
+    v.set_modo("dibujar")
+    trazo(150, 250, 300)
+    r = v._bbox(v.marcas[0][0])
+    v._rts_inicio(a_evento(r.x0 - 8, r.y0 - 8))
+    v._rts_mover(a_evento(r.x1 + 8, r.y1 + 8))
+    v._rts_soltar(a_evento(r.x1 + 8, r.y1 + 8))
+    app.update()
+    check(v.modo == "seleccionar", "soltar el recuadro pasa a modo Seleccionar")
+    check(v.seleccion == [0], "y agarra la marca que quedo dentro del recuadro",
+          "seleccion=%s" % v.seleccion)
+    empezar_limpio()
+    palabras = v._palabras_pagina()
+    pa, pb = palabras[0], palabras[min(3, len(palabras) - 1)]
+    v._rts_inicio(a_evento(pa[0] - 2, pa[1] - 2))
+    v._rts_soltar(a_evento(pb[2] + 2, pb[3] + 2))
+    app.update()
+    check(len(v._texto_sel) > 0, "un recuadro sobre un vacio elige el texto del manual",
+          repr(v._texto_sel)[:50])
+
+    print("\n== 8t. La manito (ruedita) agarra y suelta la hoja ==")
+    empezar_limpio()
+    v._pan_inicio(Evento(400, 400))
+    check(v._pan is True, "apretar la ruedita agarra la hoja")
+    v._pan_mover(Evento(400, 340))
+    v._pan_fin(Evento(400, 340))
+    check(v._pan is None, "y al soltar la suelta")
 
     # Reponer lo que esperan los pasos siguientes.
     empezar_limpio()

@@ -43,7 +43,8 @@ trap {
 # Solo estos archivos son "el programa". El resto (ESTADO.md, autotest, los
 # scripts de instalacion) es material de trabajo y no viaja.
 $DEL_PROGRAMA = @("lector.pyw", "anotaciones.py", "errores.py", "ayuda.py",
-                  "leer_devolucion.py", "lector.ico", "autotest.py", "como_usar.txt")
+                  "idiomas.py", "leer_devolucion.py", "lector.ico", "autotest.py",
+                  "como_usar.txt")
 
 Write-Host ""
 Write-Host "=== Instalando el Lector PDF ==="
