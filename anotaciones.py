@@ -163,14 +163,35 @@ def _ancho_texto(cadena):
 def _envolver(parrafo, ancho_util):
     """Parte un parrafo en lineas que no superen ancho_util, midiendo de verdad."""
     lineas, actual = [], ""
+    # Una palabra mas ancha que el renglon se parte por letras, como en
+    # cualquier programa: la nota nunca se ensancha para que entre.
+    partes = []
     for palabra in parrafo.split(" "):
+        partida = False
+        while palabra and _ancho_texto(palabra) > ancho_util:
+            k = 1
+            while k < len(palabra) and _ancho_texto(palabra[:k + 1]) <= ancho_util:
+                k += 1
+            partes.append((palabra[:k], True))
+            palabra = palabra[k:]
+            partida = True
+        if palabra or not partida:
+            partes.append((palabra, False))
+    for palabra, cortada in partes:
+        if cortada:
+            if actual:
+                lineas.append(actual)
+            lineas.append(palabra)
+            actual = ""
+            continue
         prueba = palabra if not actual else actual + " " + palabra
         if not actual or _ancho_texto(prueba) <= ancho_util:
             actual = prueba
         else:
             lineas.append(actual)
             actual = palabra
-    lineas.append(actual)
+    if actual or not lineas:
+        lineas.append(actual)
     return lineas
 
 

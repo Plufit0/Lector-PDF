@@ -17,6 +17,9 @@ exactamente qué marcaste y sobre qué parte del texto.
 Vos ves un solo documento marcado. El agente recibe dos cosas separadas: el
 texto original del documento, y cada marca con la frase sobre la que cae.
 
+> 🔒 **Tu PDF original nunca se modifica.** Las marcas se guardan siempre en una
+> copia nueva (`documento-devolucion.pdf`), así que podés marcar sin miedo.
+
 <p align="center"><img src="docs/captura-es.png" alt="Lector PDF en español" width="900"></p>
 
 ### Qué se puede hacer
@@ -25,13 +28,14 @@ texto original del documento, y cada marca con la frase sobre la que cae.
 - **Atar** una nota o un dibujo a una frase concreta, para que no haya dudas de
   a qué se refiere.
 - **Mover, copiar, recolorear, renombrar, unir y borrar** lo marcado. Las notas
-  se ajustan solas a su texto: sus costados cambian el ancho y sus esquinas el
-  tamaño de letra.
+  se ajustan solas a su texto; sus manijas cambian el tamaño del recuadro y el
+  panel, el tamaño de letra.
 - **Ocultar las marcas** un momento para leer el documento limpio.
 - **Buscar** texto en el documento y comentar lo encontrado.
 - **Guardar** como en cualquier editor: la primera vez elegís el nombre de la
-  copia y después `Ctrl+S` guarda encima. Queda en el portapapeles un mensaje
-  listo para pegar en el chat, con el comando exacto para que el agente lo lea.
+  copia y después `Ctrl+S` guarda encima. Con **Copiar** te llevás un mensaje
+  para pegar en cualquier chat de IA junto con el PDF: le explica cómo separar
+  el documento de tus marcas.
 - La lista de PDFs abre en **la última carpeta que usaste**.
 - Interfaz en **español e inglés** (botón *English / Español*).
 
@@ -80,7 +84,9 @@ Copia el programa a `C:\Program Files\Mios\LectorPDF` y crea el acceso directo
 
 ### Cómo lee el agente una devolución
 
-Al guardar, el mensaje que queda en el portapapeles ya trae este comando:
+El mensaje de **Copiar** sirve para cualquier IA (también un chat de navegador al
+que le adjuntás el PDF). Si la IA puede ejecutar comandos en tu PC, además trae
+este:
 
 ```
 "ruta\a\python.exe" "C:\Program Files\Mios\LectorPDF\leer_devolucion.py" "archivo-devolucion.pdf"
@@ -95,8 +101,8 @@ círculo, un tachado o una flecha).
 Como **anotaciones PDF estándar**, no como píxeles pegados a la hoja: por eso se
 ven en cualquier otro lector de PDF, el texto del documento sigue intacto y las
 marcas se pueden seguir editando después. El PDF original nunca se modifica:
-la primera vez se guarda una copia nueva (`-devolucion`, numerada) y después se
-actualiza esa misma copia.
+la primera vez se guarda una copia nueva (`-devolucion`, numerada; en inglés
+`-feedback`) y después se actualiza esa misma copia.
 
 ### Archivos
 
@@ -126,6 +132,9 @@ what you marked and on which part of the text.
 You see a single marked-up document. The agent receives two separate things:
 the document's original text, and each mark with the sentence it falls on.
 
+> 🔒 **Your original PDF is never modified.** Marks are always saved to a new
+> copy (`document-feedback.pdf`), so you can mark it up without worry.
+
 <p align="center"><img src="docs/captura-en.png" alt="Lector PDF in English" width="900"></p>
 
 ### What you can do
@@ -134,12 +143,13 @@ the document's original text, and each mark with the sentence it falls on.
 - **Tie** a note or a drawing to a specific sentence, so there is no doubt
   about what it refers to.
 - **Move, copy, recolor, rename, merge and delete** marks. Notes fit their text
-  by themselves: their sides change the width and their corners the text size.
+  by themselves; their handles change the box size and the panel, the text size.
 - **Hide your marks** for a moment to read the clean document.
 - **Find** text in the document and comment on what you found.
 - **Save** like in any editor: the first time you choose the copy's name, and
-  then `Ctrl+S` saves over it. A ready-to-paste message is left on the
-  clipboard, with the exact command the agent needs to read it.
+  then `Ctrl+S` saves over it. **Copy** gives you a message to paste in any AI
+  chat along with the PDF: it explains how to separate the document from your
+  marks.
 - The PDF list opens in **the last folder you used**.
 - Interface in **Spanish and English** (*English / Español* button).
 
@@ -187,7 +197,8 @@ It copies the program to `C:\Program Files\Mios\LectorPDF` and creates the
 
 ### How the agent reads a returned file
 
-When you save, the message left on the clipboard already includes this command:
+The **Copy** message works for any AI (also a browser chat you attach the PDF
+to). If the AI can run commands on your PC, it also includes this one:
 
 ```
 "path\to\python.exe" "C:\Program Files\Mios\LectorPDF\leer_devolucion.py" "file-devolucion.pdf"
@@ -202,8 +213,8 @@ circle, a strikethrough or an arrow).
 As **standard PDF annotations**, not pixels burned onto the page: that is why
 they show up in any other PDF reader, the document's text stays intact, and the
 marks can still be edited later. The original PDF is never modified: the first
-time a new copy is saved (`-devolucion`, numbered), and after that the same copy
-is updated.
+time a new copy is saved (`-feedback`, numbered; `-devolucion` in Spanish), and
+after that the same copy is updated.
 
 ### Files
 

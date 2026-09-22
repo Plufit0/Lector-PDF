@@ -194,10 +194,12 @@ CURSOR_MANO = ("{@%s}" % _RUTA_MANO.replace("\\", "/")) if os.path.isfile(_RUTA_
 # entrada (Figma, tldraw, Excalidraw, Office). La letra subrayada del nombre es
 # el atajo, asi que el atajo sale del texto del boton en el idioma activo.
 HERRAMIENTAS = ("seleccionar", "dibujar", "texto", "borrar")
-# Donde van las manijas de una nota elegida: 4 esquinas (tamano de letra) y
-# los 2 costados (ancho). Arriba y abajo no hay: el alto se ajusta solo.
+# Manijas de una nota elegida: 4 esquinas y 4 costados, como en cualquier
+# editor. Todas cambian el TAMANO DE LA CAJA (nunca la letra: eso va en el
+# panel). Mientras se arrastra, la caja mide exacto lo pedido; al soltar se
+# ajusta al texto (decision del Disenador, sept-2026).
 MANIJAS_ESQUINA = ("ai", "ad", "bi", "bd")      # arriba/abajo + izquierda/derecha
-MANIJAS_COSTADO = ("izq", "der")
+MANIJAS_COSTADO = ("izq", "der", "arr", "abj")
 
 
 def mezclar(color, alfa, fondo=(1.0, 1.0, 1.0)):
@@ -299,15 +301,22 @@ def atajo_de(modo):
     return t("modo_" + modo)[:1].lower()
 
 
+# Sufijos que puede traer el nombre de una devolucion (espanol e ingles): se
+# sacan antes de proponer el nombre nuevo, asi no queda "-devolucion-feedback".
+SUFIJOS_DEVOLUCION = ("-devolucion", "-feedback")
+
+
 def ruta_libre(carpeta, base):
     """Devuelve una ruta que no existe, numerando: -devolucion, -devolucion-2, ...
 
+    El sufijo va en el idioma de la interfaz (en ingles, -feedback).
     Numerado, nunca "final" ni "corregido": la version mas alta es la ultima.
     """
-    cand = os.path.join(carpeta, base + "-devolucion.pdf")
+    sufijo = t("sufijo_devolucion")
+    cand = os.path.join(carpeta, "%s-%s.pdf" % (base, sufijo))
     n = 2
     while os.path.exists(cand):
-        cand = os.path.join(carpeta, "%s-devolucion-%d.pdf" % (base, n))
+        cand = os.path.join(carpeta, "%s-%s-%d.pdf" % (base, sufijo, n))
         n += 1
     return cand
 
@@ -545,6 +554,10 @@ class Visor(ttk.Frame):
         # reabierta se guarda encima de si misma; un PDF original, nunca: la
         # primera vez se pregunta el nombre de la copia.
         self.ruta_guardado = ruta if A.es_devolucion(self.doc) else None
+        # Letra de las notas nuevas: la de la ultima nota del PDF (asi se
+        # recuerda al reabrir); si no hay, la de entrada.
+        notas = [m for p in sorted(self.marcas) for m in self.marcas[p] if m["tipo"] == "texto"]
+        self.cuerpo_nuevas = (notas[-1].get("cuerpo") if notas else None) or A.CUERPO_NOTA
         # Estado del cuadro de escribir y de otras cosas de paso. Se declaran
         # aca para que ninguna funcion dependa de que otra las haya creado antes.
         self._editor_nombre = ""
@@ -553,6 +566,8 @@ class Visor(ttk.Frame):
         self._editor_color = self.color
         self._editor_ancho = None
         self._editor_cuerpo = None
+        self._editor_alto = None      # alto elegido arrastrando con Texto (puntos PDF)
+        self._editor_fijo = False     # el ancho del cuadro lo eligio el usuario
         self._medidor = None        # cuadro escondido que mide los renglones de la nota
         self._editor_fuente = None
         self._cursor_actual = CURSORES[self.modo]
@@ -840,7 +855,7 @@ class Visor(ttk.Frame):
         self.pnl_titulo.pack(fill="x", padx=12, pady=(12, 2))
         self.pnl_datos = tk.Label(p, text="", bg="#F4F6F8", fg="#5B6472", anchor="w",
                                   justify="left", wraplength=230, font=("Segoe UI", 8))
-        self.pnl_datos.pack(fill="x", padx=12, pady=(0, 10))
+        # El subtexto (pagina, caracteres, cita) no se muestra: era ruido.
 
         # --- con texto del documento elegido -----------------------------------
         self.pnl_texto_pdf = tk.Frame(p, bg="#F4F6F8")
@@ -890,6 +905,17 @@ class Visor(ttk.Frame):
                       relief="raised", bd=2,
                       command=lambda c=col: self._cambiar_color(c)).pack(side="left", padx=1)
 
+        # --- tamano de letra (solo notas) ---------------------------------------
+        self.pnl_letra_bloque = tk.Frame(p, bg="#F4F6F8")
+        tk.Label(self.pnl_letra_bloque, text=t("pnl_letra_titulo"), bg="#F4F6F8",
+                 fg="#7A828C", anchor="w", font=("Segoe UI", 7, "bold")).pack(fill="x")
+        self.pnl_letra = ttk.Spinbox(self.pnl_letra_bloque, from_=A.CUERPO_MIN,
+                                     to=A.CUERPO_MAX, increment=1, width=6,
+                                     command=self._cambiar_letra)
+        self.pnl_letra.pack(anchor="w", pady=(2, 0))
+        self.pnl_letra.bind("<Return>", self._cambiar_letra)
+        self.pnl_letra.bind("<FocusOut>", self._cambiar_letra)
+
         # --- grosor ----------------------------------------------------------
         self.pnl_grosor = tk.Frame(p, bg="#F4F6F8")
         tk.Label(self.pnl_grosor, text=t("pnl_grosor_titulo"), bg="#F4F6F8", fg="#7A828C", anchor="w",
@@ -905,10 +931,6 @@ class Visor(ttk.Frame):
         self.pnl_acciones = tk.Frame(p, bg="#F4F6F8")
         self.btn_editar_nota = tk.Button(self.pnl_acciones, text=t("pnl_editar_texto"),
                                          command=self._editar_nota_seleccionada)
-        self.btn_ancho_auto = tk.Button(self.pnl_acciones, text=t("pnl_ancho_auto"),
-                                        command=self.ancho_automatico)
-        self.btn_letra_normal = tk.Button(self.pnl_acciones, text=t("pnl_letra_normal"),
-                                          command=self.letra_normal)
         self.btn_unificar = tk.Button(self.pnl_acciones, text=t("pnl_unificar"),
                                       command=self._unificar)
         self.btn_borrar = tk.Button(self.pnl_acciones, text=t("pnl_borrar"),
@@ -946,10 +968,10 @@ class Visor(ttk.Frame):
     def _refrescar_panel(self):
         """Vuelca en el panel lo que hay elegido ahora mismo."""
         for w in (self.pnl_texto_pdf, self.pnl_nombre_bloque, self.pnl_ref_bloque,
-                  self.pnl_color_bloque, self.pnl_grosor, self.pnl_acciones):
+                  self.pnl_color_bloque, self.pnl_letra_bloque, self.pnl_grosor,
+                  self.pnl_acciones):
             w.pack_forget()
-        for b in (self.btn_editar_nota, self.btn_ancho_auto, self.btn_letra_normal,
-                  self.btn_unificar, self.btn_borrar, self.btn_soltar):
+        for b in (self.btn_editar_nota, self.btn_unificar, self.btn_borrar, self.btn_soltar):
             b.pack_forget()
 
         marcas = self._marcas_seleccionadas()
@@ -1004,16 +1026,15 @@ class Visor(ttk.Frame):
                                   % (self.pno + 1, dibujos, len(marcas) - dibujos))
 
         self.pnl_color_bloque.pack(fill="x", padx=12, pady=(0, 10))
+        if uno is not None and uno["tipo"] == "texto":
+            self.pnl_letra.set("%g" % (uno.get("cuerpo") or A.CUERPO_NOTA))
+            self.pnl_letra_bloque.pack(fill="x", padx=12, pady=(0, 10))
         if any(m["tipo"] == "lapiz" for m in marcas):
             self.pnl_grosor.pack(fill="x", padx=12, pady=(0, 10))
 
         self.pnl_acciones.pack(fill="x", padx=12, pady=(2, 0))
         if uno is not None and uno["tipo"] == "texto":
             self.btn_editar_nota.pack(fill="x", pady=(0, 3))
-            if uno.get("ancho"):
-                self.btn_ancho_auto.pack(fill="x", pady=(0, 3))
-            if uno.get("cuerpo"):
-                self.btn_letra_normal.pack(fill="x", pady=(0, 3))
         if sum(1 for m in marcas if m["tipo"] == "lapiz") >= 2:
             self.btn_unificar.pack(fill="x", pady=(0, 3))
         self.btn_borrar.pack(fill="x", pady=(0, 3))
@@ -1303,27 +1324,23 @@ class Visor(ttk.Frame):
         return None
 
     def _manijas(self, i):
-        """{nombre: (x, y)} de las manijas de la nota i, en el canvas.
-
-        Esquinas (ai, ad, bi, bd) = tamano de letra; costados (izq, der) =
-        ancho. Arriba y abajo no hay: el alto sale solo del texto. Es el
-        modelo de Canva, tldraw y Excalidraw para cajas de texto que se
-        ajustan solas (decision del Disenador, sept-2026).
-        """
+        """{nombre: (x, y)} de las 8 manijas de la nota i, en el canvas."""
         lista = self.marcas.get(self.pno, [])
         x0, y0, x1, y1 = self._caja_en_pantalla(lista[i], i)
         x0, y0, x1, y1 = x0 - 4, y0 - 4, x1 + 4, y1 + 4
-        medio = (y0 + y1) / 2.0
+        mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
         return {"ai": (x0, y0), "ad": (x1, y0), "bi": (x0, y1), "bd": (x1, y1),
-                "izq": (x0, medio), "der": (x1, medio)}
+                "izq": (x0, my), "der": (x1, my), "arr": (mx, y0), "abj": (mx, y1)}
 
     def _dibujar_manijas(self, i):
         """Cuadraditos blancos con borde azul, como en cualquier editor."""
         for nombre, (mx, my) in self._manijas(i).items():
             if nombre in MANIJAS_ESQUINA:
                 caja = (mx - 4, my - 4, mx + 4, my + 4)
-            else:
+            elif nombre in ("izq", "der"):
                 caja = (mx - 3, my - 9, mx + 3, my + 9)
+            else:
+                caja = (mx - 9, my - 3, mx + 9, my + 3)
             self.canvas.create_rectangle(*caja, fill="white", outline="#1971C2",
                                          width=2, tags="seleccion")
 
@@ -1340,8 +1357,9 @@ class Visor(ttk.Frame):
             return None
         cx, cy = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
         for nombre, (mx, my) in self._manijas(i).items():
-            alto = 7 if nombre in MANIJAS_ESQUINA else 12
-            if abs(cx - mx) <= 7 and abs(cy - my) <= alto:
+            ax, ay = (7, 7) if nombre in MANIJAS_ESQUINA else \
+                ((7, 12) if nombre in ("izq", "der") else (12, 7))
+            if abs(cx - mx) <= ax and abs(cy - my) <= ay:
                 return i, nombre
         return None
 
@@ -1393,6 +1411,12 @@ class Visor(ttk.Frame):
             # el tamano) y medida "de libro" quedaba un hueco vacio a la derecha.
             caja = self.canvas.bbox(tag_txt)
             x1 = max(x0 + A.ANCHO_MIN_NOTA * f * self.zoom, (caja[2] if caja else x0) + pad)
+            # Mientras se arrastra una manija, el fondo mide exacto lo pedido
+            # (el alto, como minimo: si el texto no entra, crece hacia abajo).
+            arrastre = self._redimensionando
+            if arrastre and arrastre.get("i") == i and arrastre.get("caja"):
+                cx1, cy1 = self._a_canvas(arrastre["caja"][2], arrastre["caja"][3])
+                x1, y1 = cx1, max(y1, cy1)
             fondo = self.canvas.create_rectangle(x0, y0, x1, y1, fill=a_hex(A.FONDO_NOTA),
                                                  outline=col, width=1, tags=("marca", tag))
             self.canvas.tag_lower(fondo, tag_txt)
@@ -1414,7 +1438,8 @@ class Visor(ttk.Frame):
             manija = self._manija_en(e)
             if manija is not None:
                 cursor = {"ai": "size_nw_se", "bd": "size_nw_se",
-                          "ad": "size_ne_sw", "bi": "size_ne_sw"}.get(
+                          "ad": "size_ne_sw", "bi": "size_ne_sw",
+                          "arr": "sb_v_double_arrow", "abj": "sb_v_double_arrow"}.get(
                               manija[1], "sb_h_double_arrow")
             elif self._marca_en(punto) is not None:
                 cursor = "fleur"
@@ -1478,7 +1503,7 @@ class Visor(ttk.Frame):
             # nota, como el cuadro de texto de Acrobat o de Figma (ver
             # _arrastre_nota). Un clic suelto la deja con el ancho de entrada.
             if self._editor is not None:
-                self._nota_arrastre = {"desde": punto[0], "movido": False, "id": None}
+                self._nota_arrastre = {"desde": punto, "movido": False}
         elif self.modo == "seleccionar":
             # Ctrl+clic o Shift+clic suman a la seleccion (Shift es lo de Windows).
             self._click_seleccionar(e, sumando=bool(e.state & 0x0005))
@@ -1563,32 +1588,28 @@ class Visor(ttk.Frame):
         self._agregar(nueva)
 
     def _arrastre_nota(self, e):
-        """Modo Texto, arrastrando despues del clic: el ancho de la nota nueva
-        va de donde se apreto hasta el mouse. Un recuadro punteado muestra el
-        ancho elegido; la caja igual se ajusta al texto que se escriba."""
+        """Modo Texto, arrastrando despues del clic: el cuadro de la nota nueva
+        va de donde se apreto hasta el mouse, en ancho Y alto. Mientras se
+        escribe mide exacto eso; al terminar se ajusta al texto."""
         d = self._nota_arrastre
         if self._editor is None:
             self._nota_arrastre = None
             return
-        px = self._a_pdf(e.x, e.y)[0]
-        if not d["movido"] and abs(px - d["desde"]) * self.zoom < 8:
+        px, py = self._a_pdf(e.x, e.y)
+        x0, y0 = d["desde"]
+        if not d["movido"] and max(abs(px - x0), abs(py - y0)) * self.zoom < 8:
             return          # un temblor del clic no cuenta como arrastre
         d["movido"] = True
         hoja = self._pagina().rect
-        izq = max(0.0, min(d["desde"], px))
-        der = min(hoja.width, max(d["desde"], px))
-        ancho = max(A.ANCHO_MIN_NOTA, der - izq)
+        f = A.escala_nota(self._editor_cuerpo)
+        izq, der = sorted((min(max(x0, 0.0), hoja.width), min(max(px, 0.0), hoja.width)))
+        arr, abj = sorted((min(max(y0, 0.0), hoja.height), min(max(py, 0.0), hoja.height)))
+        ancho = max(A.ANCHO_MIN_NOTA * f, der - izq)
+        alto = max(A.medir_nota("", None, self._editor_cuerpo)[1], abj - arr)
         izq = max(0.0, min(izq, hoja.width - ancho))
-        self._editor_ancho = ancho
-        y = self._editor_xy[1]
-        self._editor_xy = (izq, y)
-        cx, cy = self._a_canvas(izq, y)
-        self.canvas.coords(self._editor_win, cx, cy)
-        if d["id"] is not None:
-            self.canvas.delete(d["id"])
-        d["id"] = self.canvas.create_rectangle(
-            cx, cy, self._a_canvas(izq + ancho, y)[0], cy + A.medir_nota("")[1] * self.zoom,
-            outline="#1971C2", dash=(3, 3), tags="guia_nota")
+        self._editor_ancho, self._editor_alto, self._editor_fijo = ancho, alto, True
+        self._editor_xy = (izq, arr)
+        self.canvas.coords(self._editor_win, *self._a_canvas(izq, arr))
         self._crecer_editor()
 
     def _soltar_nota(self, _e):
@@ -1640,6 +1661,9 @@ class Visor(ttk.Frame):
         menu = tk.Menu(self, tearoff=0)
         menu.add_command(label=t("menu_guardar_como"), accelerator="Ctrl+Shift+S",
                          command=lambda: self.guardar(como=True))
+        # Copiar el mensaje para la IA de la ultima devolucion guardada.
+        menu.add_command(label=t("menu_copiar_prompt"), command=self.copiar_prompt,
+                         state="normal" if self.ruta_guardado else "disabled")
         bt = self.btn_guardar
         try:
             menu.tk_popup(bt.winfo_rootx(), bt.winfo_rooty() + bt.winfo_height())
@@ -2022,21 +2046,18 @@ class Visor(ttk.Frame):
         r = self._bbox(mk)
         self._redimensionando = {
             "i": i, "cual": cual, "movido": False, "guia": None,
-            "ini": {"x": mk["x"], "y": mk["y"], "w": r.width, "h": r.height,
-                    "ancho": mk.get("ancho"), "cuerpo": mk.get("cuerpo")}}
+            "ini": {"x": mk["x"], "y": mk["y"], "w": r.width, "h": r.height},
+            "caja": None}
 
     def _redimensionar(self, punto):
-        """Arrastrando una manija de la nota elegida (punto en puntos PDF).
+        """Arrastrando una manija: la caja mide EXACTO lo que se marca.
 
-        Costados = ANCHO. Lo que se guarda es el TOPE del ancho (clave
-        "ancho"): la caja sigue ajustada al texto, asi que ensanchar
-        "desenrolla" renglones hasta que la nota entra en uno solo, y angostar
-        la parte en mas renglones. El costado de enfrente queda quieto. Nunca
-        se sale de la hoja.
-
-        Esquinas = TAMANO DE LETRA. La nota entera crece o se achica en la
-        misma proporcion (letra, margen y tope de ancho), con la esquina de
-        enfrente quieta: los renglones se cortan igual, solo que mas grandes.
+        Mientras se arrastra, el fondo tiene el tamano pedido aunque el texto no
+        lo llene, y el texto se parte a ese ancho. Al soltar, la caja se ajusta
+        al texto (fit to size); el ancho elegido queda como ancho de los
+        renglones. Si el texto no entra en el alto pedido, la caja crece hacia
+        abajo. El lado (o la esquina) de enfrente queda quieto. Nunca se sale
+        de la hoja.
         """
         datos = self._redimensionando
         lista = self.marcas.get(self.pno, [])
@@ -2045,48 +2066,31 @@ class Visor(ttk.Frame):
         mk = lista[datos["i"]]
         ini, cual = datos["ini"], datos["cual"]
         hoja = self._pagina().rect
-        if cual in MANIJAS_COSTADO:
-            minimo = A.ANCHO_MIN_NOTA * A.escala_nota(ini["cuerpo"])
-            if cual == "der":
-                tope = min(max(minimo, punto[0] - ini["x"]), max(minimo, hoja.width - ini["x"]))
-                nuevo = {"ancho": tope, "x": ini["x"]}
-                datos["guia"] = ini["x"] + tope
-            else:
-                derecha = ini["x"] + ini["w"]
-                tope = min(max(minimo, derecha - punto[0]), max(minimo, derecha))
-                ancho_caja = A.medir_nota(mk["texto"], tope, ini["cuerpo"])[0]
-                nuevo = {"ancho": tope, "x": derecha - ancho_caja}
-                datos["guia"] = derecha - tope
-        else:
-            # Proporcion = cuanto se alejo el mouse de la esquina quieta, medido
-            # sobre la diagonal de la caja (como Canva: se puede tirar en
-            # cualquier direccion y crece parejo).
-            sx = -1.0 if cual[1] == "i" else 1.0
-            sy = -1.0 if cual[0] == "a" else 1.0
-            fx = ini["x"] + (ini["w"] if sx < 0 else 0.0)
-            fy = ini["y"] + (ini["h"] if sy < 0 else 0.0)
-            dx, dy = ini["w"] * sx, ini["h"] * sy
-            prop = ((punto[0] - fx) * dx + (punto[1] - fy) * dy) / max(1e-6, dx * dx + dy * dy)
-            antes = ini["cuerpo"] or A.CUERPO_NOTA
-            cuerpo = min(max(A.CUERPO_MIN, antes * prop), A.CUERPO_MAX)
-            prop = cuerpo / antes
-            nuevo = {"cuerpo": cuerpo}
-            if ini["ancho"]:
-                nuevo["ancho"] = ini["ancho"] * prop
-            w, h = A.medir_nota(mk["texto"], nuevo.get("ancho"), cuerpo)
-            nuevo["x"] = fx - w if sx < 0 else fx
-            nuevo["y"] = fy - h if sy < 0 else fy
-            datos["guia"] = None
-        if all(abs((mk.get(k) or 0.0) - v) < 0.05 for k, v in nuevo.items()):
-            return
+        minw = A.ANCHO_MIN_NOTA * A.escala_nota(mk.get("cuerpo"))
+        minh = A.medir_nota("", None, mk.get("cuerpo"))[1]
+        x0, y0 = ini["x"], ini["y"]
+        x1, y1 = x0 + ini["w"], y0 + ini["h"]
+        px = min(max(punto[0], 0.0), hoja.width)
+        py = min(max(punto[1], 0.0), hoja.height)
+        if cual in ("ai", "bi", "izq"):
+            x0 = min(px, x1 - minw)
+        if cual in ("ad", "bd", "der"):
+            x1 = max(px, x0 + minw)
+        if cual in ("ai", "ad", "arr"):
+            y0 = min(py, y1 - minh)
+        if cual in ("bi", "bd", "abj"):
+            y1 = max(py, y0 + minh)
+        nuevo = {"x": x0, "y": y0}
+        if cual not in ("arr", "abj"):
+            nuevo["ancho"] = x1 - x0
+        datos["caja"] = (x0, y0, x1, y1)
         if not datos["movido"]:
+            if all(abs((mk.get(k) or 0.0) - v) < 0.05 for k, v in nuevo.items()) \
+                    and abs(y1 - (ini["y"] + ini["h"])) < 0.05:
+                return
             self._instantanea()             # una sola instantanea por arrastre
             datos["movido"] = True
         mk.update(nuevo)
-        # Una nota que vuelve a la letra de entrada queda como una nota comun,
-        # sin la clave de mas (asi "sin guardar" se apaga si se deshace a mano).
-        if abs(mk.get("cuerpo", A.CUERPO_NOTA) - A.CUERPO_NOTA) < 0.05:
-            mk.pop("cuerpo", None)
         self.render(self.canvas.yview()[0])
 
     def empujar_seleccion(self, dx, dy):
@@ -2122,36 +2126,31 @@ class Visor(ttk.Frame):
         except Exception:
             return 96.0
 
-    def letra_normal(self):
-        """Boton del panel: la nota vuelve al tamano de letra de entrada."""
-        marcas = [m for m in self._marcas_seleccionadas()
-                  if m["tipo"] == "texto" and m.get("cuerpo")]
-        if not marcas:
+    def _cambiar_letra(self, _e=None):
+        """Tamano de letra del panel: cambia la nota elegida y queda como el de
+        las notas nuevas de este PDF (se recuerda: al reabrir, las notas nuevas
+        usan el de la ultima nota)."""
+        marcas = [m for m in self._marcas_seleccionadas() if m["tipo"] == "texto"]
+        try:
+            valor = float(str(self.pnl_letra.get()).replace(",", "."))
+        except ValueError:
+            self._refrescar_panel()
+            return
+        valor = max(A.CUERPO_MIN, min(A.CUERPO_MAX, round(valor)))
+        self.cuerpo_nuevas = valor
+        if len(marcas) != 1:
+            return
+        mk = marcas[0]
+        if abs((mk.get("cuerpo") or A.CUERPO_NOTA) - valor) < 0.05:
             return
         self._instantanea()
-        for mk in marcas:
-            # El tope de ancho elegido se achica o agranda en la misma
-            # proporcion: la nota vuelve a tener los mismos renglones.
-            if mk.get("ancho"):
-                mk["ancho"] = mk["ancho"] / A.escala_nota(mk["cuerpo"])
+        if abs(valor - A.CUERPO_NOTA) < 0.05:
             mk.pop("cuerpo", None)
-            self._encajar_nota(mk)
+        else:
+            mk["cuerpo"] = valor
+        self._encajar_nota(mk)
         self.render(self.canvas.yview()[0])
         self._marcar_sucio()
-        self._refrescar_panel()
-
-    def ancho_automatico(self):
-        """Boton del panel: la nota vuelve al ancho de siempre (el de entrada)."""
-        marcas = [m for m in self._marcas_seleccionadas()
-                  if m["tipo"] == "texto" and m.get("ancho")]
-        if not marcas:
-            return
-        self._instantanea()
-        for mk in marcas:
-            mk.pop("ancho", None)
-        self.render(self.canvas.yview()[0])
-        self._marcar_sucio()
-        self._refrescar_panel()
 
     def _mover_seleccion(self, dx, dy):
         # Nada se va de la hoja: una marca fuera del papel llega cortada en el
@@ -2538,7 +2537,12 @@ class Visor(ttk.Frame):
         self._editor_original = original
         self._editor_color = original[1]["color"] if original else self.color
         self._editor_ancho = original[1].get("ancho") if original else None
-        self._editor_cuerpo = original[1].get("cuerpo") if original else None
+        self._editor_cuerpo = original[1].get("cuerpo") if original else (
+            None if abs(self.cuerpo_nuevas - A.CUERPO_NOTA) < 0.05 else self.cuerpo_nuevas)
+        # Una nota con ancho elegido se edita con ESE ancho (el que eligio el
+        # usuario); una nueva hecha con un clic crece con el texto.
+        self._editor_fijo = bool(self._editor_ancho)
+        self._editor_alto = None
         f = A.escala_nota(self._editor_cuerpo)
         # La frase que estaba esperando (Comentar esta frase) se toma ACA, al
         # abrir el cuadro: si despues la nota queda vacia, la frase no queda
@@ -2642,27 +2646,32 @@ class Visor(ttk.Frame):
             return None
 
     def _crecer_editor(self, _e=None):
-        """El cuadro de escribir crece con el texto, como la nota terminada.
+        """El cuadro de escribir: mientras se escribe manda el tamano elegido.
 
-        El ANCHO sale de la misma cuenta que la caja final (A.lineas_nota): lo que
-        se ve al escribir es lo que queda. El ALTO sale de los renglones que Tk
-        parte de verdad (ver _renglones_tk): Tk mide la letra a su manera y a
-        veces corta un renglon distinto que el PDF, y con el alto calculado
-        aparte el cuadro quedaba un renglon de mas o de menos.
+        Con ancho elegido (arrastrando con Texto, o una nota que ya lo tenia),
+        el cuadro mide exacto eso, y de alto lo elegido; si el texto no entra,
+        crece hacia abajo. Hecha con un clic, crece con el texto hasta el ancho
+        de entrada. Al cerrar, la nota se ajusta al texto (fit to size).
+        El alto sale de los renglones que Tk parte de verdad (_renglones_tk).
         """
         ed = self._editor
         if ed is None:
             return
         texto = ed.get("1.0", "end-1c")
-        lineas = A.lineas_nota(texto, self._editor_ancho, self._editor_cuerpo)
-        # Ancho = el renglon mas ancho TAL COMO LO DIBUJA la pantalla (misma
-        # razon que en _dibujar_marca: medido "de libro" quedaba aire a la
-        # derecha), mas los margenes, el borde y lugar para el cursor.
-        mas_ancho = max([self._editor_fuente.measure(l) for l in lineas] + [0])
-        minimo = A.ANCHO_MIN_NOTA * A.escala_nota(self._editor_cuerpo) * self.zoom
         pad = int(ed.cget("padx"))
-        ancho = max(minimo, mas_ancho + 2 * pad + 2 + 4)
-        renglones = self._renglones_tk(texto, ancho) or len(lineas)
+        f = A.escala_nota(self._editor_cuerpo)
+        if self._editor_fijo and self._editor_ancho:
+            ancho = self._editor_ancho * self.zoom
+        else:
+            lineas = A.lineas_nota(texto, self._editor_ancho, self._editor_cuerpo)
+            # Ancho = el renglon mas ancho TAL COMO LO DIBUJA la pantalla (misma
+            # razon que en _dibujar_marca), mas margenes, borde y el cursor.
+            mas_ancho = max([self._editor_fuente.measure(l) for l in lineas] + [0])
+            ancho = max(A.ANCHO_MIN_NOTA * f * self.zoom, mas_ancho + 2 * pad + 2 + 4)
+        renglones = self._renglones_tk(texto, ancho) or 1
+        if self._editor_alto:
+            util = self._editor_alto - 2 * A.PAD_NOTA * f
+            renglones = max(renglones, int(max(1, round(util / (A.ALTO_LINEA * f)))))
         # Ancho y alto juntos, en el mismo instante: nada intermedio se dibuja.
         self.canvas.itemconfigure(self._editor_win, width=ancho)
         ed.config(height=renglones)
@@ -2716,6 +2725,8 @@ class Visor(ttk.Frame):
                 nueva["ancla"] = self._editor_ancla
             if self._editor_ancho:
                 nueva["ancho"] = self._editor_ancho     # elegido arrastrando al crearla
+            if self._editor_cuerpo:
+                nueva["cuerpo"] = self._editor_cuerpo   # la letra elegida en el panel
             self._encajar_nota(nueva)
             self._agregar(nueva)
         self._editor_nombre = ""
@@ -2820,8 +2831,9 @@ class Visor(ttk.Frame):
         if preguntar:
             carpeta = os.path.dirname(self.ruta_guardado or self.ruta)
             base = os.path.splitext(os.path.basename(self.ruta))[0]
-            if base.endswith("-devolucion"):
-                base = base[:-len("-devolucion")]
+            for suf in SUFIJOS_DEVOLUCION:
+                if base.endswith(suf):
+                    base = base[:-len(suf)]
             sugerida = ruta_libre(carpeta, base)
             destino = filedialog.asksaveasfilename(
                 parent=self, title=t("dlg_guardar_titulo"),
@@ -2874,16 +2886,22 @@ class Visor(ttk.Frame):
         self.firma_guardada = self._firma()
         self.ruta_guardado = destino
         self.app.actualizar_titulo()
-        # Se copia el mensaje ENTERO, no solo la ruta: asi el usuario pega una vez en
-        # el chat y el agente ya sabe que es una devolucion y con que leerla, sin
-        # tener que explicarle nada ni acordarse del comando.
-        self.app.clipboard_clear()
-        self.app.clipboard_append(mensaje_para_el_chat(destino))
-        self.app.update()           # dejar el portapapeles firme en Windows
+        # El mensaje para la IA NO se copia solo (pisaba el portapapeles sin
+        # avisar): se copia con el boton "Copiar" del cartel, o con "Copiar
+        # prompt" en la flechita de Guardar (decision del Disenador, sept-2026).
         if preguntar:
             self.dialogo_guardado = DialogoGuardado(self.app, destino)
         else:
             self.pie.config(text=t("pie_guardado") % os.path.basename(destino))
+
+    def copiar_prompt(self):
+        """Copia el mensaje para la IA de la devolucion guardada."""
+        if not self.ruta_guardado:
+            return
+        self.app.clipboard_clear()
+        self.app.clipboard_append(mensaje_para_el_chat(self.ruta_guardado))
+        self.app.update()           # dejar el portapapeles firme en Windows
+        self.pie.config(text=t("pie_prompt_copiado"))
 
     def _ocupado(self, si):
         """Cursor de espera mientras se guarda: un PDF grande tarda unos
@@ -2951,12 +2969,17 @@ class DialogoGuardado(tk.Toplevel):
         caja.pack(fill="x")
         fila = ttk.Frame(marco)
         fila.pack(fill="x", pady=(14, 0))
+        # "Copiar" parpadea (Copiar / COPIAR) hasta que se toca: el mensaje no se
+        # copia solo, y asi no se pasa por alto. Tocado, queda quieto.
+        self.app_, self.destino = app, destino
+        self.btn_copiar = tk.Button(fila, text=t("dlg_copiar"), width=10,
+                                    font=("Segoe UI", 9, "bold"), command=self.copiar)
+        self.btn_copiar.pack(side="left")
+        self.copiado = False
+        self._parpadeo = None
+        self._parpadear(True)
         ttk.Button(fila, text=t("dlg_abrir_carpeta"),
-                   command=lambda: abrir_en_explorador(destino)).pack(side="left")
-        ttk.Button(fila, text=t("dlg_copiar_de_nuevo"),
-                   command=lambda: (app.clipboard_clear(),
-                                    app.clipboard_append(mensaje_para_el_chat(destino)),
-                                    app.update())).pack(side="left", padx=6)
+                   command=lambda: abrir_en_explorador(destino)).pack(side="left", padx=6)
         ttk.Button(fila, text=t("dlg_copiar_ruta"),
                    command=lambda: (app.clipboard_clear(), app.clipboard_append(destino),
                                     app.update())).pack(side="left")
@@ -2969,6 +2992,28 @@ class DialogoGuardado(tk.Toplevel):
         self.geometry("+%d+%d" % (max(0, x), max(0, y)))
         self.grab_set()
         self.focus_set()
+
+    def _parpadear(self, mayus):
+        if self.copiado:
+            return
+        try:
+            texto = t("dlg_copiar")
+            self.btn_copiar.config(text=texto.upper() if mayus else texto)
+            self._parpadeo = self.after(550, lambda: self._parpadear(not mayus))
+        except tk.TclError:
+            pass
+
+    def copiar(self):
+        self.copiado = True
+        if self._parpadeo is not None:
+            try:
+                self.after_cancel(self._parpadeo)
+            except tk.TclError:
+                pass
+        self.btn_copiar.config(text=t("dlg_copiar"))
+        self.app_.clipboard_clear()
+        self.app_.clipboard_append(mensaje_para_el_chat(self.destino))
+        self.app_.update()
 
 
 def abrir_en_explorador(ruta):

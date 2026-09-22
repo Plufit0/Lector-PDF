@@ -10,16 +10,17 @@ Cómo se usa
    carpeta y queda recordada para la próxima vez; “Abrir archivo…” abre un PDF
    de cualquier lado.
 2. Marcá encima. Dibujar (D) para trazar a mano. Texto (T) para escribir una
-   nota: clic donde la querés, o arrastrá para elegir su ancho.
+   nota: clic donde la querés, o arrastrá para elegir su tamaño.
 3. Acomodá lo marcado. Con Seleccionar (S), arrastrá una marca para moverla.
-   En una nota elegida, los costados cambian el ancho y las esquinas el tamaño
-   de letra. Clic derecho y arrastrar elige varias marcas a la vez.
+   En una nota elegida, las manijas cambian el tamaño del recuadro y el panel
+   de la derecha, el tamaño de letra. Clic derecho y arrastrar elige varias
+   marcas a la vez.
 4. Señalá la frase exacta. Arrastrá sobre el texto del PDF y tocá “Comentar
    esta frase”: la nota que escribas queda atada a esa frase, y el agente sabe
    a qué te referís.
 5. Guardá y pegá en el chat. Guardar (Ctrl+S) crea una copia del PDF con tus
-   marcas; el original no se toca. El mensaje para el agente queda copiado:
-   pegalo en el chat con Ctrl+V.
+   marcas; el original no se toca. Tocá Copiar y pegá el mensaje en el chat
+   junto con el PDF (también está en la flechita de Guardar: Copiar prompt).
 
 Pasá el mouse sobre cualquier botón para ver qué hace y su atajo.
 
@@ -44,8 +45,10 @@ ELEGIR Y EDITAR
   Doble clic / Enter         Editar la nota elegida
   Flechas                    Mover lo elegido (con Shift, de a 10)
   Supr                       Borrar lo elegido
-  Ctrl+C / Ctrl+X / Ctrl+V   Copiar, cortar y pegar marcas (Ctrl+C también
-                             copia texto del PDF)
+  Ctrl+C                     Copiar las marcas elegidas (o el texto del PDF
+                             elegido)
+  Ctrl+X                     Cortar las marcas elegidas
+  Ctrl+V                     Pegar las marcas copiadas
   Ctrl+Z / Ctrl+Y            Deshacer y rehacer
   Esc                        Soltar lo elegido o cancelar lo que estabas
                              haciendo

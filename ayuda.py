@@ -47,17 +47,18 @@ PASOS = {
          "de cualquier lado."),
         ("Marcá encima",
          "Dibujar (D) para trazar a mano. Texto (T) para escribir una nota: clic donde "
-         "la querés, o arrastrá para elegir su ancho."),
+         "la querés, o arrastrá para elegir su tamaño."),
         ("Acomodá lo marcado",
          "Con Seleccionar (S), arrastrá una marca para moverla. En una nota elegida, "
-         "los costados cambian el ancho y las esquinas el tamaño de letra. Clic "
-         "derecho y arrastrar elige varias marcas a la vez."),
+         "las manijas cambian el tamaño del recuadro y el panel de la derecha, el "
+         "tamaño de letra. Clic derecho y arrastrar elige varias marcas a la vez."),
         ("Señalá la frase exacta",
          "Arrastrá sobre el texto del PDF y tocá “Comentar esta frase”: la nota "
          "que escribas queda atada a esa frase, y el agente sabe a qué te referís."),
         ("Guardá y pegá en el chat",
          "Guardar (Ctrl+S) crea una copia del PDF con tus marcas; el original no se "
-         "toca. El mensaje para el agente queda copiado: pegalo en el chat con Ctrl+V."),
+         "toca. Tocá Copiar y pegá el mensaje en el chat junto con el PDF (también "
+         "está en la flechita de Guardar: Copiar prompt)."),
     ],
     "en": [
         ("Open a PDF",
@@ -66,18 +67,18 @@ PASOS = {
          "anywhere."),
         ("Mark it up",
          "Draw (D) to draw freehand. Text (T) to write a note: click where you want "
-         "it, or drag to choose its width."),
+         "it, or drag to choose its size."),
         ("Arrange your marks",
-         "With Select (S), drag a mark to move it. On a selected note, the sides "
-         "change the width and the corners change the text size. Right-click and "
-         "drag selects several marks at once."),
+         "With Select (S), drag a mark to move it. On a selected note, the handles "
+         "change the size of the box and the right panel, the text size. Right-click "
+         "and drag selects several marks at once."),
         ("Point at the exact sentence",
          "Drag over the PDF text and press “Comment on this sentence”: the note "
          "you write is tied to that sentence, and the agent knows what you mean."),
         ("Save and paste it in the chat",
          "Save (Ctrl+S) creates a copy of the PDF with your marks; the original is "
-         "never touched. The message for the agent is copied: paste it in the chat "
-         "with Ctrl+V."),
+         "never touched. Press Copy and paste the message in the chat along with the "
+         "PDF (it is also in the Save arrow: Copy prompt)."),
     ],
 }
 

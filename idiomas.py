@@ -233,8 +233,7 @@ TEXTOS = {
     "grosor_medio": {"es": "Medio", "en": "Medium"},
     "grosor_grueso": {"es": "Grueso", "en": "Thick"},
     "pnl_editar_texto": {"es": "Editar el texto", "en": "Edit the text"},
-    "pnl_ancho_auto": {"es": "Ancho automático", "en": "Automatic width"},
-    "pnl_letra_normal": {"es": "Tamaño de letra normal", "en": "Normal text size"},
+    "pnl_letra_titulo": {"es": "TAMAÑO DE LETRA", "en": "TEXT SIZE"},
     "pnl_unificar": {"es": "Unificar en un solo dibujo",
                      "en": "Merge into a single drawing"},
     "pnl_borrar": {"es": "Borrar", "en": "Delete"},
@@ -263,6 +262,9 @@ TEXTOS = {
     "menu_cortar": {"es": "Cortar", "en": "Cut"},
     "menu_pegar": {"es": "Pegar acá", "en": "Paste here"},
     "menu_guardar_como": {"es": "Guardar como…", "en": "Save as…"},
+    "menu_copiar_prompt": {"es": "Copiar prompt", "en": "Copy prompt"},
+    # Sufijo del nombre de la copia guardada, en el idioma de la interfaz.
+    "sufijo_devolucion": {"es": "devolucion", "en": "feedback"},
     "tecla_supr": {"es": "Supr", "en": "Del"},
     "menu_nota_aca": {"es": "Escribir una nota acá", "en": "Write a note here"},
     "menu_seleccionar_todo": {"es": "Seleccionar todas las marcas",
@@ -295,8 +297,9 @@ TEXTOS = {
         "es": "Escribiendo una nota  —  Esc o clic afuera para confirmar",
         "en": "Writing a note  —  Esc or click outside to confirm"},
     "pie_guardando": {"es": "Guardando…", "en": "Saving…"},
-    "pie_guardado": {"es": "Guardado en %s. El mensaje para el chat ya está copiado: pegalo con Ctrl+V.",
-                     "en": "Saved to %s. The message for the chat is already copied: paste it with Ctrl+V."},
+    "pie_guardado": {"es": "Guardado en %s.", "en": "Saved to %s."},
+    "pie_prompt_copiado": {"es": "Prompt copiado: pegalo en el chat junto con el PDF.",
+                           "en": "Prompt copied: paste it in the chat along with the PDF."},
     "pie_copiadas": {"es": "%d marca(s) copiada(s). Ctrl+V para pegar.",
                      "en": "%d mark(s) copied. Ctrl+V to paste."},
     "pie_pegadas": {"es": "%d marca(s) pegada(s).", "en": "%d mark(s) pasted."},
@@ -328,54 +331,71 @@ TEXTOS = {
     "dlg_guardado_titulo": {"es": "Guardado", "en": "Saved"},
     "dlg_devolucion_guardada": {"es": "Devolución guardada", "en": "Feedback saved"},
     "dlg_guardado_info": {
-        "es": "Esto ya está copiado. Pegalo en el chat con Ctrl+V.\n"
-              "Es un mensaje escrito para el agente: le dice qué es esto, dónde\n"
-              "quedó el archivo y con qué leerlo. No hace falta que agregues nada.",
-        "en": "This is already copied. Paste it into the chat with Ctrl+V.\n"
-              "It is a message written for the agent: it tells it what this is, where\n"
-              "the file ended up and what to read it with. You do not need to add anything."},
+        "es": "Para pasársela a una IA: tocá Copiar y pegá el mensaje en el chat,\n"
+              "junto con el PDF. El mensaje le explica cómo separar el documento\n"
+              "original de tus marcas.",
+        "en": "To hand it to an AI: press Copy and paste the message in the chat,\n"
+              "along with the PDF. The message explains how to separate the original\n"
+              "document from your marks."},
     "dlg_abrir_carpeta": {"es": "Abrir carpeta", "en": "Open folder"},
-    "dlg_copiar_de_nuevo": {"es": "Copiar de nuevo", "en": "Copy again"},
+    "dlg_copiar": {"es": "Copiar", "en": "Copy"},
     "dlg_copiar_ruta": {"es": "Copiar solo la ruta", "en": "Copy just the path"},
     "dlg_listo": {"es": "Listo", "en": "Done"},
 
     # ------------------------------------------- mensaje que se pega al chat --
-    # Escrito para que lo lea un agente. Lleva 4 datos, en este orden:
+    # El prompt para CUALQUIER IA: un chatbot de navegador al que se le adjunta
+    # el PDF, o un agente con acceso a la PC. Explica como separar el documento
+    # original de las marcas usando solo lo que trae el PDF (anotaciones
+    # estandar). El comando del final es opcional, para quien puede ejecutarlo.
+    # Lleva 4 datos, en este orden:
     # %s = archivo, %s = Python con las librerias, %s = extractor, %s = archivo.
-    # El Python va con su ruta completa: con "python" a secas el agente podia
-    # terminar en otro Python de la maquina y fallar por falta de pymupdf.
     "mensaje_chat": {
-        "es": "Te paso una devolución mía marcada sobre un PDF.\n"
+        "es": "Te paso un PDF con mi devolución: leí el documento y lo marqué encima con "
+              "dibujos y notas. El PDF va adjunto (en esta computadora está en: %s).\n"
               "\n"
-              "QUÉ ES: leí el documento y lo marqué encima, a mano: dibujos y notas "
-              "escritas. Algunas marcas están atadas a una frase concreta del "
-              "documento y otras son sueltas.\n"
+              "CÓMO LEERLO: separá dos cosas.\n"
+              "1. EL DOCUMENTO ORIGINAL: el texto impreso de las páginas. Leelo sin las "
+              "anotaciones.\n"
+              "2. MI DEVOLUCIÓN: las anotaciones del PDF cuyo autor es \"Devolucion\".\n"
+              "   - Notas (FreeText): recuadros amarillos; el texto completo está en su "
+              "contenido.\n"
+              "   - Dibujos (Ink): trazos a mano. Mirá la página para ver si es un "
+              "círculo, un tachado o una flecha, y qué texto tocan.\n"
+              "   - Subrayados tenues (Underline) cuyo nombre termina en \"-ancla\": "
+              "marcan la frase exacta a la que se refiere la marca con el nombre del "
+              "principio; su contenido es esa frase.\n"
+              "   - Si el asunto de una marca empieza con \"ref:\", se refiere a otra "
+              "marca con ese nombre.\n"
+              "Las marcas sin frase atada se refieren a lo que tienen al lado o debajo.\n"
+              "Para cada marca, decime en qué página está, qué parte del documento señala "
+              "y qué te pido.\n"
               "\n"
-              "EL ARCHIVO:\n"
-              "%s\n"
-              "\n"
-              "CÓMO LEERLO: no lo abras como un PDF común. Corré este comando, que te "
-              "devuelve por separado el texto original del documento y cada marca mía "
-              "con la parte del texto sobre la que cae, más una imagen de cada página "
-              "marcada. Abrí esas imágenes: el texto te dice dónde cae cada trazo, "
-              "pero no si es un círculo, un tachado o una flecha.\n"
-              "\n"
+              "Si podés ejecutar comandos en esta computadora, este hace la separación "
+              "solo (texto original, cada marca con su frase e imágenes de las páginas "
+              "marcadas):\n"
               "\"%s\" \"%s\" \"%s\"\n",
-        "en": "Here is feedback of mine marked up on a PDF.\n"
+        "en": "Here is a PDF with my feedback: I read the document and marked it up with "
+              "drawings and notes. The PDF is attached (on this computer it is at: %s).\n"
               "\n"
-              "WHAT IT IS: I read the document and marked it up by hand: drawings and "
-              "written notes. Some marks are tied to a specific sentence of the "
-              "document and others are loose.\n"
+              "HOW TO READ IT: separate two things.\n"
+              "1. THE ORIGINAL DOCUMENT: the printed text of the pages. Read it without "
+              "the annotations.\n"
+              "2. MY FEEDBACK: the PDF annotations whose author is \"Devolucion\".\n"
+              "   - Notes (FreeText): yellow boxes; the full text is in their contents.\n"
+              "   - Drawings (Ink): freehand strokes. Look at the page to see whether it "
+              "is a circle, a strikethrough or an arrow, and what text they touch.\n"
+              "   - Faint underlines (Underline) whose name ends in \"-ancla\": they mark "
+              "the exact phrase the mark with the name before it refers to; their "
+              "contents are that phrase.\n"
+              "   - If a mark's subject starts with \"ref:\", it refers to another mark "
+              "with that name.\n"
+              "Marks without a tied phrase refer to what is next to or under them.\n"
+              "For each mark, tell me which page it is on, what part of the document it "
+              "points at and what I am asking for.\n"
               "\n"
-              "THE FILE:\n"
-              "%s\n"
-              "\n"
-              "HOW TO READ IT: do not open it as a normal PDF. Run this command, which "
-              "returns separately the original text of the document and each of my "
-              "marks with the part of the text it falls on, plus an image of each "
-              "marked page. Open those images: the text tells you where each stroke "
-              "falls, but not whether it is a circle, a strikethrough or an arrow.\n"
-              "\n"
+              "If you can run commands on this computer, this one does the separation for "
+              "you (original text, each mark with its phrase, and images of the marked "
+              "pages):\n"
               "\"%s\" \"%s\" \"%s\"\n"},
 
     # ------------------------------------------------------- app: titulo -----

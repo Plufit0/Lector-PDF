@@ -903,8 +903,8 @@ def main():
     mas_ancha = max(A._ancho_texto(l) for l in A.lineas_nota(mk["texto"], mk.get("ancho")))
     check(abs((r.width - 2 * A.PAD_NOTA) - max(mas_ancha, A.ANCHO_MIN_NOTA - 2 * A.PAD_NOTA)) < 0.5,
           "la caja mide justo su renglon mas ancho: sin aire a la derecha")
-    v.ancho_automatico()
-    check("ancho" not in v.marcas[0][i], "'Ancho automatico' la devuelve al ancho de siempre")
+    check(abs(mk["ancho"] - (v._pagina().rect.width - mk["x"])) < 0.6,
+          "el ancho queda exacto donde se solto la manija (el borde de la hoja)")
 
     print("\n== 8ab. En modo Texto, clic sobre una nota la edita ==")
     empezar_limpio()
@@ -1006,12 +1006,12 @@ def main():
     check(app.title().startswith("* "), "el asterisco del titulo avisa que falta guardar",
           app.title())
 
-    print("\n== 8ai. Manijas de la nota: costados = ancho, esquinas = letra ==")
+    print("\n== 8ai. Manijas de la nota: 8, cambian la caja (nunca la letra) ==")
     empezar_limpio()
     v.set_modo("texto")
     v._click(a_evento(20, 300))
     app.update()
-    v._editor.insert("1.0", "una nota de prueba con varias palabras para partir")
+    v._editor.insert("1.0", "una nota de prueba")
     v._cerrar_editor(confirmar=True)
     app.update()
     mk = v.marcas[0][0]
@@ -1019,26 +1019,26 @@ def main():
     v.seleccion = [0]
     v.render()
     app.update()
-    check(sorted(v._manijas(0)) == sorted(["ai", "ad", "bi", "bd", "izq", "der"]),
-          "una nota elegida tiene 4 esquinas y 2 costados (arriba y abajo no)")
+    check(sorted(v._manijas(0)) == sorted(["ai", "ad", "bi", "bd", "izq", "der", "arr", "abj"]),
+          "una nota elegida tiene 4 esquinas y 4 costados")
     antes_r = v._bbox(mk)
-    lineas_antes = A.lineas_nota(mk["texto"], mk.get("ancho"), mk.get("cuerpo"))
     v._empezar_manija(0, "bd")
-    v._redimensionar((antes_r.x0 + 2 * antes_r.width, antes_r.y0 + 2 * antes_r.height))
+    v._redimensionar((antes_r.x0 + 300, antes_r.y0 + 120))
+    app.update()
+    x0c, y0c, x1c, y1c = v._cajas_notas[0]
+    check(abs((x1c - x0c) - 300 * v.zoom) < 2 and abs((y1c - y0c) - 120 * v.zoom) < 2,
+          "mientras se arrastra, la caja mide EXACTO lo pedido aunque el texto no la llene",
+          "%.0fx%.0f px" % (x1c - x0c, y1c - y0c))
     v._soltar_seleccionar(None)
-    despues_r = v._bbox(mk)
-    check(abs((mk.get("cuerpo") or 0) - 2 * A.CUERPO_NOTA) < 0.3,
-          "tirar de una esquina al doble agranda la letra al doble",
-          "cuerpo=%s" % mk.get("cuerpo"))
-    check(A.lineas_nota(mk["texto"], mk.get("ancho"), mk.get("cuerpo")) == lineas_antes,
-          "sin cambiar como se parten los renglones")
-    check(abs(despues_r.x0 - antes_r.x0) < 0.5 and abs(despues_r.y0 - antes_r.y0) < 0.5,
-          "y la esquina de enfrente queda quieta")
-    v.deshacer()
     mk = v.marcas[0][0]
-    check(not mk.get("cuerpo"), "Ctrl+Z la devuelve a su letra")
-    # Lo mismo, pero con eventos de mouse de verdad sobre la ventana: prueba que
-    # la manija se encuentra donde se dibuja y que los bind() la atienden.
+    check(not mk.get("cuerpo"), "la esquina no cambia la letra")
+    check(abs(v._bbox(mk).height - antes_r.height) < 0.5,
+          "al soltar, la caja se ajusta al texto (fit to size)")
+    check(abs(mk.get("ancho", 0) - 300) < 0.6, "y el ancho elegido queda como ancho de la nota")
+    v.deshacer()
+    # Con eventos de mouse de verdad sobre la ventana: prueba que la manija se
+    # encuentra donde se dibuja y que los bind() la atienden.
+    mk = v.marcas[0][0]
     v.seleccion = [0]
     v.render()
     app.update()
@@ -1049,26 +1049,46 @@ def main():
           "sobre la esquina, el cursor es la flecha diagonal de estirar", str(c.cget("cursor")))
     c.event_generate("<ButtonPress-1>", x=ex_, y=ey_)
     for k in range(1, 9):
-        c.event_generate("<B1-Motion>", x=ex_ + 6 * k, y=ey_ + 3 * k)
-    c.event_generate("<ButtonRelease-1>", x=ex_ + 48, y=ey_ + 24)
+        c.event_generate("<B1-Motion>", x=ex_ + 12 * k, y=ey_ + 3 * k)
+    c.event_generate("<ButtonRelease-1>", x=ex_ + 96, y=ey_ + 24)
     app.update()
     mk = v.marcas[0][0]
-    check((mk.get("cuerpo") or 0) > A.CUERPO_NOTA,
-          "arrastrar la esquina con el mouse agranda la letra", "cuerpo=%s" % mk.get("cuerpo"))
+    check(bool(mk.get("ancho")) and not mk.get("cuerpo"),
+          "arrastrar la esquina con el mouse cambia el tamano de la caja")
     v.deshacer()
     mk = v.marcas[0][0]
-    mk["x"] = 300.0          # al medio de la hoja, con lugar para ensanchar a la izquierda
+    mk["x"] = 300.0
     v.seleccion = [0]
     v.render()
     derecha = v._bbox(mk).x1
     v._empezar_manija(0, "izq")
     v._redimensionar((v._bbox(mk).x0 - 120, mk["y"]))
+    app.update()
+    check(abs(v._cajas_notas[0][2] - v._a_canvas(derecha, 0)[0]) < 1.5,
+          "tirar del costado izquierdo deja quieto el derecho mientras se arrastra")
     v._soltar_seleccionar(None)
     mk = v.marcas[0][0]
-    check(abs(v._bbox(mk).x1 - derecha) < 0.6,
-          "tirar del costado izquierdo deja quieto el derecho",
-          "%.1f vs %.1f" % (v._bbox(mk).x1, derecha))
     check(bool(mk.get("ancho")), "y cambia el ancho de la nota")
+    v.seleccion = [0]
+    v.render()
+    app.update()
+    v.pnl_letra.set("20")
+    v._cambiar_letra()
+    mk = v.marcas[0][0]
+    check(abs((mk.get("cuerpo") or 0) - 20) < 0.01, "el tamano de letra del panel cambia la nota")
+    check(abs(v.cuerpo_nuevas - 20) < 0.01, "y queda como la letra de las notas nuevas")
+    v.set_modo("texto")
+    v._click(a_evento(60, 600))
+    app.update()
+    v._editor.insert("1.0", "nueva")
+    v._cerrar_editor(confirmar=True)
+    check(abs((v.marcas[0][-1].get("cuerpo") or 0) - 20) < 0.01,
+          "una nota nueva sale con esa letra")
+    v.cuerpo_nuevas = A.CUERPO_NOTA
+    check(not v.pnl_datos.winfo_ismapped(), "el panel no muestra el subtexto de la marca")
+    check(A.lineas_nota("m" * 80, 120) and
+          all(A._ancho_texto(l) <= 120 - 2 * A.PAD_NOTA + 0.01 for l in A.lineas_nota("m" * 80, 120)),
+          "una palabra mas larga que la nota se parte por letras (la nota no se ensancha)")
     v.set_modo("dibujar")
     trazo(150, 250)
     v.set_modo("seleccionar")
@@ -1262,14 +1282,24 @@ def main():
     app.update()
     check(os.path.exists(destino), "el archivo se escribio")
     check(not v.sucio, "el programa deja de marcar 'sin guardar'")
+    app.clipboard_clear()
+    app.clipboard_append("otra cosa")
+    v.guardar()
+    app.update()
+    check(app.clipboard_get() == "otra cosa", "guardar ya no pisa el portapapeles solo")
+    v.copiar_prompt()
     try:
         portapapeles = app.clipboard_get()
     except Exception:
         portapapeles = ""
-    check(destino in portapapeles, "la ruta quedo en el portapapeles para pegar en el chat",
+    check(destino in portapapeles, "\"Copiar prompt\" copia el mensaje con la ruta",
           repr(portapapeles)[:70])
-    check("leer_devolucion.py" in portapapeles,
-          "y tambien el comando con el que el agente la lee (sirve en un chat nuevo)")
+    check("Devolucion" in portapapeles and "leer_devolucion.py" in portapapeles,
+          "que explica como separar las marcas y trae el comando para quien pueda correrlo")
+    lector.idiomas.set_idioma("en", persistir=False)
+    check(lector.ruta_libre(tmp, "doc").endswith("doc-feedback.pdf"),
+          "en ingles la copia termina en -feedback")
+    lector.idiomas.set_idioma("es", persistir=False)
     preguntas = []
     lector.filedialog.asksaveasfilename = lambda **kw: (preguntas.append(kw), destino)[1]
     v.guardar()
