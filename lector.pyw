@@ -4,8 +4,9 @@ Lector PDF — leer cualquier PDF y marcarlo encima para devolverselo a un agent
 
 Flujo para el que fue hecho (no desviarse de esto sin pedirlo):
   abre mostrando los PDFs de la ultima carpeta usada -> se abre uno -> se lee
-  y se marca intercalando -> Guardar -> el mensaje para el chat queda en el
-  portapapeles.
+  y se marca intercalando -> Guardar -> el PDF guardado se sube a cualquier
+  chat de IA tal cual: trae su hoja-guia y se explica solo (ver guia.py; desde
+  sept-2026 ya no hay mensaje para copiar y pegar).
 
   Carpeta: decision del Disenador (sept-2026). Se recuerda la ultima carpeta
   elegida ("Cambiar carpeta..." o la de un PDF abierto con "Abrir archivo..."),
@@ -77,7 +78,7 @@ from idiomas import t
 _ERROR_IMPORT = None
 try:
     import pymupdf
-    from PIL import Image, ImageTk
+    from PIL import Image, ImageChops, ImageTk
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import anotaciones as A
@@ -183,7 +184,7 @@ CUSHION_HOJA = 26
 # Cursor de cada herramienta. Un solo lugar: antes estaba copiado en cuatro
 # metodos y era facil que uno quedara distinto.
 CURSORES = {"dibujar": "pencil", "texto": "xterm", "seleccionar": "arrow",
-            "borrar": "dotbox"}
+            "borrar": "dotbox", "resaltar": "xterm"}
 # La "manito" que agarra la hoja al arrastrarla con la ruedita apretada, como la
 # mano cerrada de Acrobat. Windows no trae ese cursor, asi que viaja con el
 # programa (mano.cur). Va entre llaves porque la ruta tiene espacios ("Program
@@ -193,7 +194,15 @@ CURSOR_MANO = ("{@%s}" % _RUTA_MANO.replace("\\", "/")) if os.path.isfile(_RUTA_
 # Herramientas en el orden de la barra: Seleccionar primero, que es la de
 # entrada (Figma, tldraw, Excalidraw, Office). La letra subrayada del nombre es
 # el atajo, asi que el atajo sale del texto del boton en el idioma activo.
-HERRAMIENTAS = ("seleccionar", "dibujar", "texto", "borrar")
+# Resaltar (sept-2026, pedido del Disenador): el resaltador clasico de Acrobat y
+# Office. Se arrastra sobre el texto del documento y queda pintado de amarillo;
+# con una frase ya elegida, R la resalta de una.
+HERRAMIENTAS = ("seleccionar", "dibujar", "texto", "resaltar", "borrar")
+# Iconos clasicos de Deshacer / Rehacer: los de la letra de iconos de Windows
+# (la misma de las apps del sistema). Si la letra no esta, flechas curvas.
+ICONOS_LETRAS = ("Segoe Fluent Icons", "Segoe MDL2 Assets")
+ICONO_DESHACER = ("", "↶")
+ICONO_REHACER = ("", "↷")
 # Manijas de una nota elegida: 4 esquinas y 4 costados, como en cualquier
 # editor. Todas cambian el TAMANO DE LA CAJA (nunca la letra: eso va en el
 # panel). Mientras se arrastra, la caja mide exacto lo pedido; al soltar se
@@ -538,6 +547,7 @@ class Visor(ttk.Frame):
         self.refiriendo = []         # marcas esperando que se elija su referencia
         self.rehacer_pila = []     # lo deshecho, para Ctrl+Y
         self.tkimg = None
+        self._img_base = None       # la hoja sin resaltados (se reusa al resaltar)
         self.historial = []         # para deshacer
         self._trazo = None
         self._tmp = []
@@ -708,7 +718,8 @@ class Visor(ttk.Frame):
         self.btn_modo = {}
         for clave in HERRAMIENTAS:
             bt = B(b, t("modo_" + clave), lambda c=clave: self.set_modo(c),
-                   11 if clave == "seleccionar" else 8, "tip_" + clave,
+                   11 if clave == "seleccionar" else (9 if clave == "resaltar" else 8),
+                   "tip_" + clave,
                    relief="raised", underline=0)
             bt.pack(side="left", padx=2)
             self.btn_modo[clave] = bt
@@ -723,8 +734,15 @@ class Visor(ttk.Frame):
 
         self.btn_grosor = B(b, t("v_grueso"), self.toggle_grosor, 7, "tip_grueso")
         self.btn_grosor.pack(side="left", padx=(8, 2))
-        B(b, t("v_deshacer"), self.deshacer, 9, "tip_deshacer").pack(side="left", padx=2)
-        B(b, t("v_rehacer"), self.rehacer, 9, "tip_rehacer").pack(side="left")
+        # Deshacer / Rehacer con sus iconos clasicos (flecha curva), como en
+        # Office o Acrobat; el cartel dice que hacen y su atajo.
+        letra = next((f for f in ICONOS_LETRAS if f in tkfont.families(self)), None)
+        k = 0 if letra else 1
+        fuente = (letra, 12) if letra else ("Segoe UI Symbol", 13)
+        self.btn_deshacer = B(b, ICONO_DESHACER[k], self.deshacer, 3, "tip_deshacer", font=fuente)
+        self.btn_deshacer.pack(side="left", padx=(8, 1))
+        self.btn_rehacer = B(b, ICONO_REHACER[k], self.rehacer, 3, "tip_rehacer", font=fuente)
+        self.btn_rehacer.pack(side="left")
 
         ttk.Separator(b, orient="vertical").pack(side="left", fill="y", padx=8)
         B(b, "-", lambda: self.set_zoom(self.zoom / 1.2), 3, "tip_alejar").pack(side="left")
@@ -863,7 +881,9 @@ class Visor(ttk.Frame):
                   font=("Segoe UI", 9, "bold"),
                   command=self.comentar_seleccion).pack(fill="x", pady=(0, 3))
         tk.Button(self.pnl_texto_pdf, text=t("pnl_dibujar_sobre"),
-                  command=self.dibujar_sobre_seleccion).pack(fill="x")
+                  command=self.dibujar_sobre_seleccion).pack(fill="x", pady=(0, 3))
+        tk.Button(self.pnl_texto_pdf, text=t("pnl_resaltar"),
+                  command=self.resaltar_seleccion).pack(fill="x")
 
         # --- nombre interno --------------------------------------------------
         self.pnl_nombre_bloque = tk.Frame(p, bg="#F4F6F8")
@@ -998,6 +1018,8 @@ class Visor(ttk.Frame):
                     text=t("pnl_datos_dibujo")
                     % (self.pno + 1, len(uno["trazos"]),
                        sum(len(tr) for tr in uno["trazos"]), r.width, r.height))
+            elif uno["tipo"] == "resaltado":
+                self.pnl_titulo.config(text=t("pnl_resaltado"))
             else:
                 self.pnl_titulo.config(text=t("pnl_nota_escrita"))
                 self.pnl_datos.config(
@@ -1018,7 +1040,9 @@ class Visor(ttk.Frame):
             self.pnl_ref.config(state="readonly",
                                 readonlybackground="#FFF6C9" if ref else "#ECEDEE")
             self.btn_quitar_ref.config(state="normal" if ref else "disabled")
-            self.pnl_ref_bloque.pack(fill="x", padx=12, pady=(0, 10))
+            # Un resaltado ya ES su frase: no se ata a otra cosa.
+            if uno["tipo"] != "resaltado":
+                self.pnl_ref_bloque.pack(fill="x", padx=12, pady=(0, 10))
         else:
             dibujos = sum(1 for m in marcas if m["tipo"] == "lapiz")
             self.pnl_titulo.config(text=t("pnl_n_marcas") % len(marcas))
@@ -1075,6 +1099,8 @@ class Visor(ttk.Frame):
     def set_modo(self, modo):
         if modo == "texto" and self.modo == "seleccionar" and self.comentar_seleccion():
             return          # habia una frase elegida: se comenta esa frase
+        if modo == "resaltar" and self.modo == "seleccionar" and self.resaltar_seleccion():
+            return          # habia una frase elegida: se resalta esa frase (como Acrobat)
         self._cerrar_editor(confirmar=True)
         # Cambiar de herramienta abandona lo que estaba "por atarse". Antes, una
         # frase elegida con "Comentar esta frase" y despues abandonada quedaba
@@ -1083,7 +1109,7 @@ class Visor(ttk.Frame):
         self.refiriendo = []
         self.modo = modo
         # Para marcar hay que ver lo que se marca: el ojito se vuelve a encender.
-        if modo in ("dibujar", "texto", "borrar") and not self.ver_marcas:
+        if modo in ("dibujar", "texto", "borrar", "resaltar") and not self.ver_marcas:
             self.toggle_ver_marcas()
         if modo != "seleccionar":
             self._limpiar_seleccion()
@@ -1184,12 +1210,35 @@ class Visor(ttk.Frame):
         # movimiento del mouse al arrastrar una marca, y con zoom alto el
         # arrastre iba a los tirones.
         clave = (id(self.doc), self.pno, round(self.zoom, 5))
-        if getattr(self, "_clave_imagen", None) != clave or self.tkimg is None:
+        if getattr(self, "_clave_base", None) != clave or self._img_base is None:
             pix = pagina.get_pixmap(matrix=pymupdf.Matrix(self.zoom, self.zoom), alpha=False)
-            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            self.tkimg = ImageTk.PhotoImage(img)
+            self._img_base = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
             self._tam_imagen = (pix.width, pix.height)
-            self._clave_imagen = clave
+            self._clave_base = clave
+        # Los resaltados se pintan DENTRO de la imagen, multiplicando el color
+        # (como un resaltador de verdad y como los dibuja Acrobat): el canvas de
+        # Tk no tiene transparencia, y un rectangulo encima taparia el texto.
+        resaltados = tuple(
+            (tuple(mk["color"]), tuple(tuple(r) for r in mk.get("rects") or []))
+            for mk in self.marcas.get(self.pno, []) if mk["tipo"] == "resaltado"
+        ) if self.ver_marcas else ()
+        if getattr(self, "_clave_imagen", None) != (clave, resaltados) or self.tkimg is None:
+            img = self._img_base
+            if resaltados:
+                img = img.copy()
+                for color, rects in resaltados:
+                    tinta = tuple(int(round(255 * c)) for c in mezclar(color, 0.85))
+                    for (x0, y0, x1, y1) in rects:
+                        caja = tuple(int(round(v * self.zoom)) for v in (x0, y0, x1, y1))
+                        caja = (max(0, caja[0]), max(0, caja[1]),
+                                min(img.width, caja[2]), min(img.height, caja[3]))
+                        if caja[2] <= caja[0] or caja[3] <= caja[1]:
+                            continue
+                        trozo = img.crop(caja)
+                        img.paste(ImageChops.multiply(
+                            trozo, Image.new("RGB", trozo.size, tinta)), caja)
+            self.tkimg = ImageTk.PhotoImage(img)
+            self._clave_imagen = (clave, resaltados)
         ancho_img, alto_img = self._tam_imagen
 
         ancho_vista = max(1, self.canvas.winfo_width())
@@ -1271,11 +1320,13 @@ class Visor(ttk.Frame):
             # Un halo azul DETRAS de la marca: hace que lo elegido salte a la
             # vista sin ensuciarlo (antes iba encima y tramaba el texto de la
             # nota). Queda arriba de la hoja y abajo de todas las marcas.
-            halo = self.canvas.create_rectangle(x0 - 7, y0 - 7, x1 + 7, y1 + 7,
-                                                fill="#9CC8F5", outline="",
-                                                tags="seleccion")
-            if self.canvas.find_withtag("marca"):
-                self.canvas.tag_lower(halo, "marca")
+            # Un resaltado no lleva halo: esta pintado en la hoja y lo taparia.
+            if marca["tipo"] != "resaltado":
+                halo = self.canvas.create_rectangle(x0 - 7, y0 - 7, x1 + 7, y1 + 7,
+                                                    fill="#9CC8F5", outline="",
+                                                    tags="seleccion")
+                if self.canvas.find_withtag("marca"):
+                    self.canvas.tag_lower(halo, "marca")
             self.canvas.create_rectangle(x0 - 4, y0 - 4, x1 + 4, y1 + 4,
                                          outline="#1971C2", width=2, dash=(4, 3),
                                          tags="seleccion")
@@ -1364,6 +1415,8 @@ class Visor(ttk.Frame):
         return None
 
     def _dibujar_marca(self, marca, i):
+        if marca["tipo"] == "resaltado":
+            return          # va pintado dentro de la imagen de la hoja (ver render)
         tag = "marca%d" % i
         col = a_hex(marca["color"])
         ancla = marca.get("ancla")
@@ -1442,7 +1495,10 @@ class Visor(ttk.Frame):
                           "arr": "sb_v_double_arrow", "abj": "sb_v_double_arrow"}.get(
                               manija[1], "sb_h_double_arrow")
             elif self._marca_en(punto) is not None:
-                cursor = "fleur"
+                # Cruz de mover, salvo sobre un resaltado (no se mueve: va
+                # pegado a su texto): ahi, la flecha de siempre.
+                i = self._marca_en(punto)
+                cursor = "arrow" if self.marcas[self.pno][i]["tipo"] == "resaltado" else "fleur"
             elif self._palabra_en(punto):
                 cursor = "xterm"
         if cursor != self._cursor_actual:
@@ -1507,6 +1563,12 @@ class Visor(ttk.Frame):
         elif self.modo == "seleccionar":
             # Ctrl+clic o Shift+clic suman a la seleccion (Shift es lo de Windows).
             self._click_seleccionar(e, sumando=bool(e.state & 0x0005))
+        elif self.modo == "resaltar":
+            # Como el resaltador de Acrobat: se arrastra sobre el texto y, al
+            # soltar, lo elegido queda resaltado. La herramienta queda puesta
+            # para seguir resaltando (como Dibujar).
+            self._limpiar_seleccion()
+            self._marco_sel = {"desde": self._a_pdf(e.x, e.y), "movido": False}
         elif self.modo == "borrar":
             # El borrador borra todo lo que toca mientras se arrastra, como el
             # de Office; toda la pasada se deshace con un solo Ctrl+Z.
@@ -1536,6 +1598,11 @@ class Visor(ttk.Frame):
         if self.modo == "borrar" and self._borrando is not None:
             self._arrastre_borrar(e)
             return
+        if self.modo == "resaltar" and self._marco_sel is not None:
+            self._marco_sel["movido"] = True
+            self._seleccionar_texto(self._marco_sel["desde"], self._a_pdf(e.x, e.y))
+            self.render(self.canvas.yview()[0])
+            return
         if self.modo != "dibujar" or self._trazo is None:
             return
         p = self._a_pdf(e.x, e.y)
@@ -1562,6 +1629,14 @@ class Visor(ttk.Frame):
             borrando, self._borrando = self._borrando, None
             if borrando["algo"]:
                 self._marcar_sucio()
+            return
+        if self.modo == "resaltar" and self._marco_sel is not None:
+            marco, self._marco_sel = self._marco_sel, None
+            # Un clic suelto no resalta nada: hay que arrastrar sobre el texto.
+            if marco["movido"]:
+                self._resaltar_elegido()
+            else:
+                self._limpiar_seleccion()
             return
         if self.modo != "dibujar" or self._trazo is None:
             return
@@ -1661,8 +1736,10 @@ class Visor(ttk.Frame):
         menu = tk.Menu(self, tearoff=0)
         menu.add_command(label=t("menu_guardar_como"), accelerator="Ctrl+Shift+S",
                          command=lambda: self.guardar(como=True))
-        # Copiar el mensaje para la IA de la ultima devolucion guardada.
-        menu.add_command(label=t("menu_copiar_prompt"), command=self.copiar_prompt,
+        # Ya no hay "Copiar prompt": la devolucion trae su hoja-guia y se
+        # explica sola (ver guia.py). Queda copiar el ARCHIVO para pegarlo.
+        menu.add_command(label=t("dlg_copiar_archivo"),
+                         command=lambda: self._copiar_archivo_guardado(),
                          state="normal" if self.ruta_guardado else "disabled")
         bt = self.btn_guardar
         try:
@@ -1767,6 +1844,7 @@ class Visor(ttk.Frame):
             menu.add_command(label=t("pnl_comentar"), command=self.comentar_seleccion)
             menu.add_command(label=t("pnl_dibujar_sobre"),
                              command=self.dibujar_sobre_seleccion)
+            menu.add_command(label=t("pnl_resaltar"), command=self.resaltar_seleccion)
         else:
             menu.add_command(label=t("menu_nota_aca"),
                              command=lambda: self._abrir_editor(punto))
@@ -1852,7 +1930,7 @@ class Visor(ttk.Frame):
     def _bbox(self, marca):
         if marca["tipo"] == "lapiz":
             return A.bbox_trazo(marca["trazos"], marca.get("grosor", GROSOR_FINO))
-        return A.rect_de(marca)
+        return A.rect_marca(marca)
 
     def _borrar_en(self, punto):
         # Misma prueba que para elegir: se borra lo que esta bajo el mouse, y un
@@ -1933,6 +2011,13 @@ class Visor(ttk.Frame):
                 continue
             if mk["tipo"] == "texto":
                 return i
+            if mk["tipo"] == "resaltado":
+                # Se toca por sus renglones pintados, no por el recuadro que
+                # los envuelve (entre dos renglones puede haber otro texto).
+                if any(x0 - tol <= px <= x1 + tol and y0 - tol / 2 <= py <= y1 + tol / 2
+                       for (x0, y0, x1, y1) in mk.get("rects") or []):
+                    return i
+                continue
             # Un dibujo se toca por su TRAZO, no por el recuadro que lo
             # envuelve: si no, despues de encerrar un parrafo en un circulo no
             # habia forma de elegir el texto de adentro.
@@ -2161,6 +2246,8 @@ class Visor(ttk.Frame):
         # salta de golpe al primer movimiento.
         hoja = self._pagina().rect
         for mk in self._marcas_seleccionadas():
+            if mk["tipo"] == "resaltado":
+                continue    # pinta un texto del documento: no se despega de el
             r = self._bbox(mk)
             mx = min(max(dx, min(0.0, -r.x0)), max(0.0, hoja.width - r.x1))
             my = min(max(dy, min(0.0, -r.y0)), max(0.0, hoja.height - r.y1))
@@ -2222,6 +2309,34 @@ class Visor(ttk.Frame):
         escriba ahi queda atada a esta frase, se ponga donde se ponga.
         """
         return self._preparar_ancla("texto", "pie_comentar")
+
+    def resaltar_seleccion(self):
+        """Resalta la frase elegida (boton del panel, menu o la R con texto
+        elegido). Devuelve False si no habia texto elegido."""
+        if not self.palabras_sel or not self._texto_sel:
+            return False
+        self._cerrar_editor(confirmar=True)
+        self._resaltar_elegido()
+        return True
+
+    def _resaltar_elegido(self):
+        """Convierte el texto elegido en un resaltado: un recuadro por renglon
+        (las palabras sueltas dejaban huecos entre una y otra)."""
+        if not self.palabras_sel or not self._texto_sel:
+            self._limpiar_seleccion()
+            self.render(self.canvas.yview()[0])
+            return
+        filas = []
+        for r in sorted(self.palabras_sel, key=lambda r: (round(r.y0 / 4), r.x0)):
+            if filas and abs(filas[-1].y0 - r.y0) < 4 and r.x0 - filas[-1].x1 < 28:
+                filas[-1] |= r
+            else:
+                filas.append(pymupdf.Rect(r))
+        marca = {"tipo": "resaltado", "rects": [tuple(r) for r in filas],
+                 "cita": self._texto_sel, "color": A.COLOR_RESALTADOR}
+        self._limpiar_seleccion()
+        self._agregar(marca)
+        self.render(self.canvas.yview()[0])     # el resaltado va dentro de la imagen
 
     def dibujar_sobre_seleccion(self):
         """Igual que comentar, pero lo que sigue es un dibujo en vez de una nota."""
@@ -2366,7 +2481,11 @@ class Visor(ttk.Frame):
         if not clip or not clip["marcas"]:
             return
         self._cerrar_editor(confirmar=True)
-        nuevas = copy.deepcopy(clip["marcas"])
+        # Un resaltado pinta un texto del documento: corrido a otro lugar
+        # pintaria cualquier cosa, asi que no se pega (Acrobat tampoco lo mueve).
+        nuevas = [mk for mk in copy.deepcopy(clip["marcas"]) if mk["tipo"] != "resaltado"]
+        if not nuevas:
+            return
         mismo_doc = A.misma_ruta(clip["ruta"], self.ruta)
         misma_pagina = mismo_doc and clip["pno"] == self.pno
         for mk in nuevas:
@@ -2886,22 +3005,17 @@ class Visor(ttk.Frame):
         self.firma_guardada = self._firma()
         self.ruta_guardado = destino
         self.app.actualizar_titulo()
-        # El mensaje para la IA NO se copia solo (pisaba el portapapeles sin
-        # avisar): se copia con el boton "Copiar" del cartel, o con "Copiar
-        # prompt" en la flechita de Guardar (decision del Disenador, sept-2026).
+        # Nada se copia solo al portapapeles (decision del Disenador). El cartel
+        # sale cuando se elige un nombre (la primera vez o "Guardar como...").
         if preguntar:
             self.dialogo_guardado = DialogoGuardado(self.app, destino)
         else:
             self.pie.config(text=t("pie_guardado") % os.path.basename(destino))
 
-    def copiar_prompt(self):
-        """Copia el mensaje para la IA de la devolucion guardada."""
-        if not self.ruta_guardado:
-            return
-        self.app.clipboard_clear()
-        self.app.clipboard_append(mensaje_para_el_chat(self.ruta_guardado))
-        self.app.update()           # dejar el portapapeles firme en Windows
-        self.pie.config(text=t("pie_prompt_copiado"))
+    def _copiar_archivo_guardado(self):
+        """Flechita de Guardar > "Copiar archivo": el PDF, listo para Ctrl+V."""
+        if self.ruta_guardado and copiar_archivo(self.ruta_guardado):
+            self.pie.config(text=t("pie_archivo_copiado"))
 
     def _ocupado(self, si):
         """Cursor de espera mientras se guarda: un PDF grande tarda unos
@@ -2919,70 +3033,104 @@ class Visor(ttk.Frame):
             pass
 
 
-def mensaje_para_el_chat(destino):
-    """El texto que se copia al guardar.
+def copiar_archivo(ruta):
+    """Deja el ARCHIVO en el portapapeles de Windows, como "Copiar" en el
+    Explorador: despues, Ctrl+V en el chat de la IA (en el navegador) lo adjunta.
 
-    ESTA ESCRITO PARA QUE LO LEA UN AGENTE, no el usuario: es lo que el usuario pega en el
-    chat y con eso el otro lado tiene que entender, sin preguntar nada, que es
-    esto, donde esta y como leerlo. Por eso arranca diciendo que es, en una
-    linea, y sigue con el comando exacto.
+    Reemplaza al viejo "Copiar prompt" (sept-2026): la devolucion ya trae su
+    hoja-guia y se explica sola, asi que lo unico que hay que llevar al chat es
+    el archivo. Formato CF_HDROP (lista de archivos), el mismo del Explorador.
+    Devuelve True si quedo copiado.
     """
-    extractor = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "leer_devolucion.py")
-    return t("mensaje_chat") % (destino, _python_para_el_agente(), extractor, destino)
-
-
-def _python_para_el_agente():
-    """Ruta completa del Python que tiene las librerias.
-
-    Con "python" a secas, el agente podia terminar usando otro Python de la
-    maquina (hay mas de uno) y fallar por falta de pymupdf. Se da el python.exe
-    que esta al lado del que corre el programa (no el pythonw, que no muestra
-    nada en la consola).
-    """
-    carpeta = os.path.dirname(sys.executable)
-    candidato = os.path.join(carpeta, "python.exe")
-    if os.path.isfile(candidato):
-        return candidato
-    return sys.executable if not os.path.basename(sys.executable).lower().startswith("pythonw") \
-        else "python"
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
+        k32.GlobalAlloc.restype = ctypes.c_void_p
+        k32.GlobalAlloc.argtypes = (wintypes.UINT, ctypes.c_size_t)
+        k32.GlobalLock.restype = ctypes.c_void_p
+        k32.GlobalLock.argtypes = (ctypes.c_void_p,)
+        k32.GlobalUnlock.argtypes = (ctypes.c_void_p,)
+        k32.GlobalFree.argtypes = (ctypes.c_void_p,)
+        u32.SetClipboardData.restype = ctypes.c_void_p
+        u32.SetClipboardData.argtypes = (wintypes.UINT, ctypes.c_void_p)
+        u32.RegisterClipboardFormatW.restype = wintypes.UINT
+        # DROPFILES: offset de la lista (20 bytes), punto (0,0), fNC=0, fWide=1;
+        # despues la ruta en UTF-16 terminada en dos ceros.
+        lista = (os.path.abspath(ruta) + "\0\0").encode("utf-16-le")
+        cabeza = ctypes.c_uint32(20).value.to_bytes(4, "little") + bytes(8) \
+            + (0).to_bytes(4, "little") + (1).to_bytes(4, "little")
+        datos = cabeza + lista
+        efecto = (1).to_bytes(4, "little")          # DROPEFFECT_COPY: copiar, no mover
+        if not u32.OpenClipboard(None):
+            return False
+        try:
+            u32.EmptyClipboard()
+            for formato, contenido in ((15, datos),     # 15 = CF_HDROP
+                                       (u32.RegisterClipboardFormatW("Preferred DropEffect"),
+                                        efecto)):
+                h = k32.GlobalAlloc(0x0042, len(contenido))   # GMEM_MOVEABLE | ZEROINIT
+                p = k32.GlobalLock(h)
+                ctypes.memmove(p, contenido, len(contenido))
+                k32.GlobalUnlock(h)
+                if not u32.SetClipboardData(formato, h):
+                    k32.GlobalFree(h)
+                    return False
+        finally:
+            u32.CloseClipboard()
+        return True
+    except Exception as err:
+        try:
+            errores.anotar("No se pudo copiar el archivo al portapapeles", err)
+        except Exception:
+            pass
+        return False
 
 
 class DialogoGuardado(tk.Toplevel):
-    """Avisa donde quedo el archivo y deja todo listo para pegar en el chat."""
+    """Avisa donde quedo la devolucion y como mandarla.
+
+    Rehecho en sept-2026: antes mostraba un mensaje largo para copiar y pegar
+    junto con el PDF. Ya no hace falta (la hoja-guia del PDF le explica a la IA
+    como leerlo): el cartel dice donde quedo el archivo y ofrece copiarlo para
+    pegarlo en el chat, o abrir su carpeta para arrastrarlo.
+    """
 
     def __init__(self, app, destino):
         super().__init__(app)
         self.title(t("dlg_guardado_titulo"))
         self.resizable(False, False)
         self.transient(app)
-        marco = ttk.Frame(self, padding=16)
+        self.destino = destino
+        marco = ttk.Frame(self, padding=(20, 16, 20, 16))
         marco.pack(fill="both", expand=True)
-        ttk.Label(marco, text=t("dlg_devolucion_guardada"), font=("Segoe UI", 12, "bold")).pack(anchor="w")
-        ttk.Label(marco,
-                  text=t("dlg_guardado_info"),
-                  foreground="#333", justify="left").pack(anchor="w", pady=(4, 10))
-        caja = tk.Text(marco, width=92, height=13, wrap="word", relief="solid", bd=1,
-                       font=("Consolas", 9), bg="#F7F7F7")
-        caja.insert("1.0", mensaje_para_el_chat(destino))
-        caja.config(state="disabled")
-        caja.pack(fill="x")
+        ttk.Label(marco, text=t("dlg_devolucion_guardada"),
+                  font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        # El archivo: nombre bien visible y la carpeta debajo, mas tenue.
+        archivo = tk.Frame(marco, bg="#F4F6F8", highlightthickness=1,
+                           highlightbackground="#CDD3DA")
+        archivo.pack(fill="x", pady=(10, 12))
+        tk.Label(archivo, text="PDF", bg="#D93F3F", fg="white", font=("Segoe UI", 8, "bold"),
+                 padx=6, pady=8).pack(side="left", padx=(10, 10), pady=10)
+        textos = tk.Frame(archivo, bg="#F4F6F8")
+        textos.pack(side="left", fill="x", expand=True, pady=8)
+        tk.Label(textos, text=os.path.basename(destino), bg="#F4F6F8", fg="#1F2328",
+                 font=("Segoe UI", 10, "bold"), anchor="w").pack(fill="x")
+        tk.Label(textos, text=os.path.dirname(destino), bg="#F4F6F8", fg="#5B6472",
+                 font=("Segoe UI", 8), anchor="w").pack(fill="x")
+        ttk.Label(marco, text=t("dlg_guardado_info"), foreground="#333", justify="left",
+                  wraplength=460).pack(anchor="w")
+        self.lbl_estado = ttk.Label(marco, text="", foreground="#2F7D32")
+        self.lbl_estado.pack(anchor="w", pady=(6, 0))
         fila = ttk.Frame(marco)
-        fila.pack(fill="x", pady=(14, 0))
-        # "Copiar" parpadea (Copiar / COPIAR) hasta que se toca: el mensaje no se
-        # copia solo, y asi no se pasa por alto. Tocado, queda quieto.
-        self.app_, self.destino = app, destino
-        self.btn_copiar = tk.Button(fila, text=t("dlg_copiar"), width=10,
-                                    font=("Segoe UI", 9, "bold"), command=self.copiar)
+        fila.pack(fill="x", pady=(12, 0))
+        self.btn_copiar = tk.Button(fila, text=t("dlg_copiar_archivo"),
+                                    font=("Segoe UI", 9, "bold"), padx=10,
+                                    command=self.copiar)
         self.btn_copiar.pack(side="left")
-        self.copiado = False
-        self._parpadeo = None
-        self._parpadear(True)
+        Globito(self.btn_copiar, "tip_copiar_archivo")
         ttk.Button(fila, text=t("dlg_abrir_carpeta"),
                    command=lambda: abrir_en_explorador(destino)).pack(side="left", padx=6)
-        ttk.Button(fila, text=t("dlg_copiar_ruta"),
-                   command=lambda: (app.clipboard_clear(), app.clipboard_append(destino),
-                                    app.update())).pack(side="left")
         ttk.Button(fila, text=t("dlg_listo"), command=self.destroy).pack(side="right")
         self.bind("<Return>", lambda e: self.destroy())
         self.bind("<Escape>", lambda e: self.destroy())
@@ -2993,27 +3141,11 @@ class DialogoGuardado(tk.Toplevel):
         self.grab_set()
         self.focus_set()
 
-    def _parpadear(self, mayus):
-        if self.copiado:
-            return
-        try:
-            texto = t("dlg_copiar")
-            self.btn_copiar.config(text=texto.upper() if mayus else texto)
-            self._parpadeo = self.after(550, lambda: self._parpadear(not mayus))
-        except tk.TclError:
-            pass
-
     def copiar(self):
-        self.copiado = True
-        if self._parpadeo is not None:
-            try:
-                self.after_cancel(self._parpadeo)
-            except tk.TclError:
-                pass
-        self.btn_copiar.config(text=t("dlg_copiar"))
-        self.app_.clipboard_clear()
-        self.app_.clipboard_append(mensaje_para_el_chat(self.destino))
-        self.app_.update()
+        if copiar_archivo(self.destino):
+            self.lbl_estado.config(text=t("dlg_archivo_copiado"), foreground="#2F7D32")
+        else:
+            self.lbl_estado.config(text=t("dlg_archivo_no_copiado"), foreground="#B42318")
 
 
 def abrir_en_explorador(ruta):
@@ -3333,6 +3465,8 @@ class App(tk.Tk):
             return
         if k == atajo_de("texto") and v.modo == "seleccionar" and v.comentar_seleccion():
             return          # habia texto elegido: la nota quedo atada a esa frase
+        if k == atajo_de("resaltar") and v.modo == "seleccionar" and v.resaltar_seleccion():
+            return          # habia texto elegido: quedo resaltado (como en Acrobat)
         # Con marcas elegidas, las flechas las mueven (como en cualquier
         # editor); Shift las mueve de a 10 pt. Sin nada elegido, pasan de pagina.
         paso = 10.0 if e.state & 0x0001 else 1.0

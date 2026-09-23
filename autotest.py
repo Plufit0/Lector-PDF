@@ -21,6 +21,7 @@ import pymupdf
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
 import anotaciones as A
+import guia as G
 
 # lector.pyw no se puede importar con import normal por la extension.
 _spec = importlib.util.spec_from_file_location(
@@ -958,20 +959,21 @@ def main():
     app._tecla(Tecla("d", state=0x0004))
     check(v.modo == "seleccionar", "Ctrl+D no cambia de herramienta")
 
-    print("\n== 8ae. El mensaje para el chat trae el Python con su ruta ==")
-    msg = lector.mensaje_para_el_chat(os.path.join(tmp, "x.pdf"))
-    check('python.exe"' in msg.lower(), "el comando usa la ruta completa de python.exe",
-          msg[-160:])
+    print("\n== 8ae. Ya no hay mensaje para pegar en el chat ==")
+    # La devolucion se explica sola (hoja-guia): el prompt quedo obsoleto.
+    check(not hasattr(lector, "mensaje_para_el_chat") and not hasattr(v, "copiar_prompt"),
+          "no queda el mensaje ni el \"Copiar prompt\"")
 
     print("\n== 8af. Barra estandar: Seleccionar primero y la letra subrayada ==")
     empezar_limpio()
-    check(list(v.btn_modo) == ["seleccionar", "dibujar", "texto", "borrar"],
+    check(list(v.btn_modo) == ["seleccionar", "dibujar", "texto", "resaltar", "borrar"],
           "Seleccionar es la primera herramienta", str(list(v.btn_modo)))
-    xs = [v.btn_modo[m].winfo_x() for m in ("seleccionar", "dibujar", "texto", "borrar")]
+    xs = [v.btn_modo[m].winfo_x() for m in ("seleccionar", "dibujar", "texto", "resaltar", "borrar")]
     check(xs == sorted(xs), "y asi se ven de izquierda a derecha", str(xs))
     check(all(int(b.cget("underline")) == 0 for b in v.btn_modo.values()),
           "cada herramienta tiene subrayada la primera letra")
-    for letra, modo in (("d", "dibujar"), ("t", "texto"), ("b", "borrar"), ("s", "seleccionar")):
+    for letra, modo in (("d", "dibujar"), ("t", "texto"), ("r", "resaltar"), ("b", "borrar"),
+                        ("s", "seleccionar")):
         app._tecla(Tecla(letra))
         check(v.modo == modo, "la letra %s elige %s" % (letra.upper(), modo))
     app._tecla(Tecla("d", state=0x20000))
@@ -979,10 +981,51 @@ def main():
     v.set_modo("seleccionar")
     lector.idiomas.set_idioma("en", persistir=False)
     check(lector.atajo_de("borrar") == "e", "en ingles, Erase se elige con la E")
+    check(lector.atajo_de("resaltar") == "h", "en ingles, Highlight se elige con la H")
+    check(len({lector.atajo_de(m) for m in lector.HERRAMIENTAS}) == len(lector.HERRAMIENTAS),
+          "en ingles ninguna letra de herramienta se repite")
     lector.idiomas.set_idioma("es", persistir=False)
     pagina = v.pno
     app._tecla(Tecla("space"))
     check(v.pno == pagina, "la barra espaciadora no hace nada (ni pasa de pagina)")
+
+    print("\n== 8af2. Resaltar (el resaltador clasico) ==")
+    empezar_limpio()
+    palabras = v._palabras_pagina()
+    w0, w1 = palabras[0], palabras[min(3, len(palabras) - 1)]
+    x0, y0 = v._a_canvas((w0[0] + w0[2]) / 2, (w0[1] + w0[3]) / 2)
+    x1, y1 = v._a_canvas((w1[0] + w1[2]) / 2, (w1[1] + w1[3]) / 2)
+    ox, oy = v.canvas.canvasx(0), v.canvas.canvasy(0)
+    v.set_modo("resaltar")
+    v._click(Evento(x0 - ox, y0 - oy))
+    v._arrastre(Evento(x1 - ox, y1 - oy))
+    v._soltar(Evento(x1 - ox, y1 - oy))
+    res = [m for m in v.marcas.get(v.pno, []) if m["tipo"] == "resaltado"]
+    check(len(res) == 1 and res[0]["cita"], "arrastrar con Resaltar deja el texto resaltado",
+          str(res)[:120])
+    check(v.modo == "resaltar", "y la herramienta queda puesta para seguir resaltando")
+    check(v._clave_imagen[1] != (), "la hoja se vuelve a pintar con el resaltado adentro")
+    v.deshacer()
+    check(not [m for m in v.marcas.get(v.pno, []) if m["tipo"] == "resaltado"],
+          "Ctrl+Z saca el resaltado")
+    v.set_modo("seleccionar")
+    v._seleccionar_texto((w0[0] + 1, w0[1] + 1), (w1[0] + 1, w1[1] + 1))
+    app._tecla(Tecla("r"))
+    check(sum(1 for m in v.marcas.get(v.pno, []) if m["tipo"] == "resaltado") == 1
+          and v.modo == "seleccionar",
+          "con texto elegido, la R lo resalta de una (como Acrobat)")
+    hl = os.path.join(tmp, "resaltado-devolucion.pdf")
+    A.guardar(v.ruta, hl, v.marcas)
+    d = pymupdf.open(hl)
+    G.quitar_hojas(d)
+    tipos = [an.type[1] for an in d[v.pno].annots()]
+    d.close()
+    check("Highlight" in tipos, "se guarda como resaltado estandar del PDF (Highlight)", str(tipos))
+    d = pymupdf.open(hl)
+    vuelta = [m for m in A.cargar(d).get(v.pno, []) if m["tipo"] == "resaltado"]
+    d.close()
+    check(len(vuelta) == 1 and vuelta[0]["cita"], "y al reabrir vuelve como resaltado")
+    v.deshacer()
 
     print("\n== 8ag. Ocultar marcas: arriba, con estado y accion a la vista ==")
     empezar_limpio()
@@ -1287,15 +1330,8 @@ def main():
     v.guardar()
     app.update()
     check(app.clipboard_get() == "otra cosa", "guardar ya no pisa el portapapeles solo")
-    v.copiar_prompt()
-    try:
-        portapapeles = app.clipboard_get()
-    except Exception:
-        portapapeles = ""
-    check(destino in portapapeles, "\"Copiar prompt\" copia el mensaje con la ruta",
-          repr(portapapeles)[:70])
-    check("Devolucion" in portapapeles and "leer_devolucion.py" in portapapeles,
-          "que explica como separar las marcas y trae el comando para quien pueda correrlo")
+    check(lector.copiar_archivo(destino),
+          "\"Copiar archivo\" deja el PDF en el portapapeles (para Ctrl+V en el chat)")
     lector.idiomas.set_idioma("en", persistir=False)
     check(lector.ruta_libre(tmp, "doc").endswith("doc-feedback.pdf"),
           "en ingles la copia termina en -feedback")
@@ -1384,6 +1420,7 @@ def main():
     A.guardar(g_dev, os.path.join(tmp, "g-dev2.pdf"),
               {1: [{"tipo": "texto", "x": 90, "y": 150, "texto": "x", "color": (0, 0, 0)}]})
     d = pymupdf.open(os.path.join(tmp, "g-dev2.pdf"))
+    G.quitar_hojas(d)       # la hoja-guia va primero: se mira el documento
     check(len(list(d[0].annots())) == 0,
           "una pagina que quedo sin marcas no arrastra anotaciones viejas")
     d.close()
@@ -1402,6 +1439,56 @@ def main():
           "x=%.3f" % x_final)
     check(A.misma_ruta(g_dev, g_dev.upper()),
           "reconoce el mismo archivo aunque cambien las mayusculas")
+
+    print("\n== 11e. La devolucion se explica sola (hoja-guia) ==")
+    # El caso de la prueba con Gemini (sept-2026): una palabra tachada y una
+    # nota atada a otra palabra. La IA veia el PDF pero no sabia a que se
+    # referia cada marca. La hoja-guia tiene que decirlo en texto.
+    gz = os.path.join(tmp, "gemini.pdf")
+    d = pymupdf.open()
+    pg = d.new_page(width=595, height=842)
+    pg.insert_text((72, 150), "Esparrago     Filmina     Casa     Acuarela", fontsize=12)
+    pg.insert_text((72, 300), "Negro", fontsize=12)
+    d.save(gz)
+    d.close()
+    casa = [w for w in pymupdf.open(gz)[0].get_text("words") if w[4] == "Casa"][0]
+    negro = [w for w in pymupdf.open(gz)[0].get_text("words") if w[4] == "Negro"][0]
+    y_medio = (casa[1] + casa[3]) / 2
+    gz_dev = os.path.join(tmp, "gemini-devolucion.pdf")
+    A.guardar(gz, gz_dev, {0: [
+        {"tipo": "lapiz", "trazos": [[(casa[0] - 4, y_medio), (casa[2] + 4, y_medio + 1)]],
+         "color": (0.88, 0.19, 0.19), "grosor": 2},
+        {"tipo": "texto", "x": 72, "y": 420, "texto": "Este color no me gusta",
+         "color": (0.88, 0.19, 0.19),
+         "ancla": {"rects": [tuple(negro[:4])], "cita": "Negro"}},
+    ]})
+    d = pymupdf.open(gz_dev)
+    check(d.page_count == 2, "la devolucion trae una hoja-guia al principio",
+          "hay %d hojas" % d.page_count)
+    t_guia = d[0].get_text()
+    check("Guía de lectura" in t_guia, "la hoja-guia es texto real (una IA la puede leer)")
+    check('"Casa"' in t_guia and "tachado" in t_guia,
+          "dice que palabra esta tachada", t_guia[:300])
+    check('"Negro"' in t_guia and "Este color no me gusta" in t_guia and "atada" in t_guia,
+          "dice a que palabra esta atada la nota")
+    nms = [((an.info or {}).get("id") or "") for an in d[1].annots()]
+    check(sum(1 for n in nms if n.startswith(G.PREFIJO + "num-")) == 2,
+          "cada marca lleva su numero en la hoja", str(nms))
+    check(any(n.startswith(G.PREFIJO + "lazo-") for n in nms),
+          "la nota atada tiene la linea hasta su palabra")
+    mm = A.cargar(d)
+    d.close()
+    check(sum(len(v) for v in mm.values()) == 2 and list(mm.keys()) == [0],
+          "al reabrir, los numeros no aparecen como notas y las paginas no se corren",
+          str({k: len(v) for k, v in mm.items()}))
+    A.guardar(gz_dev, gz_dev, mm)
+    d = pymupdf.open(gz_dev)
+    check(d.page_count == 2, "guardar encima no suma otra hoja-guia", "hay %d" % d.page_count)
+    d.close()
+    A.guardar(gz, os.path.join(tmp, "gemini-vacio.pdf"), {})
+    d = pymupdf.open(os.path.join(tmp, "gemini-vacio.pdf"))
+    check(d.page_count == 1, "sin marcas no hay hoja-guia")
+    d.close()
 
     print("\n== 11c. Salir con una nota a medio escribir avisa ==")
     v_tmp = app.visor
@@ -1440,7 +1527,9 @@ def main():
     app.update()
     check(v2.ruta_guardado == destino2, "\"Guardar como...\" pasa a guardar en el nombre nuevo")
     d2 = pymupdf.open(destino2)
-    n2 = sum(len(list(d2[i].annots())) for i in range(d2.page_count))
+    # Los numeros y lineas de la guia no son marcas: se cuentan aparte.
+    n2 = sum(1 for i in range(d2.page_count) for an in d2[i].annots()
+             if not ((an.info or {}).get("id") or "").startswith(G.PREFIJO))
     d2.close()
     check(n2 == sum(esperadas.values()), "no se duplicaron anotaciones", "hay %d" % n2)
     check(abs(os.path.getsize(destino2) - os.path.getsize(destino)) < 20000,
@@ -1547,6 +1636,7 @@ def main():
               {0: [{"tipo": "lapiz", "trazos": [[(80, 300), (400, 300)]],
                     "color": (0.88, 0.19, 0.19), "grosor": 2}]})
     d = pymupdf.open(salida_ajeno)
+    G.quitar_hojas(d)
     autores = sorted((an.info or {}).get("title", "") for an in d[0].annots())
     check("Edge" in autores, "no pisa las marcas hechas con otro programa", str(autores))
     check(sum(len(v) for v in A.cargar(d).values()) == 1,

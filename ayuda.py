@@ -34,8 +34,8 @@ import idiomas
 TITULO = "Lector PDF"
 
 BAJADA = {
-    "es": "Marcá cualquier PDF con dibujos y notas, y pasáselo a un agente.",
-    "en": "Mark up any PDF with drawings and notes, and hand it to an agent.",
+    "es": "Marcá cualquier PDF con dibujos, notas y resaltados, y pasáselo a una IA.",
+    "en": "Mark up any PDF with drawings, notes and highlights, and hand it to an AI.",
 }
 
 # Cinco pasos: (titulo, texto).
@@ -47,18 +47,20 @@ PASOS = {
          "de cualquier lado."),
         ("Marcá encima",
          "Dibujar (D) para trazar a mano. Texto (T) para escribir una nota: clic donde "
-         "la querés, o arrastrá para elegir su tamaño."),
+         "la querés, o arrastrá para elegir su tamaño. Resaltar (R): arrastrá sobre el "
+         "texto para pintarlo de amarillo."),
         ("Acomodá lo marcado",
          "Con Seleccionar (S), arrastrá una marca para moverla. En una nota elegida, "
          "las manijas cambian el tamaño del recuadro y el panel de la derecha, el "
          "tamaño de letra. Clic derecho y arrastrar elige varias marcas a la vez."),
         ("Señalá la frase exacta",
          "Arrastrá sobre el texto del PDF y tocá “Comentar esta frase”: la nota "
-         "que escribas queda atada a esa frase, y el agente sabe a qué te referís."),
-        ("Guardá y pegá en el chat",
+         "que escribas queda atada a esa frase, y la IA sabe a qué te referís."),
+        ("Guardá y mandalo",
          "Guardar (Ctrl+S) crea una copia del PDF con tus marcas; el original no se "
-         "toca. Tocá Copiar y pegá el mensaje en el chat junto con el PDF (también "
-         "está en la flechita de Guardar: Copiar prompt)."),
+         "toca. Subí esa copia a cualquier chat de IA, sin explicarle nada: la primera "
+         "hoja le dice cómo leer tus marcas. “Copiar archivo” la deja lista para pegar "
+         "en el chat con Ctrl+V."),
     ],
     "en": [
         ("Open a PDF",
@@ -67,18 +69,20 @@ PASOS = {
          "anywhere."),
         ("Mark it up",
          "Draw (D) to draw freehand. Text (T) to write a note: click where you want "
-         "it, or drag to choose its size."),
+         "it, or drag to choose its size. Highlight (H): drag over the text to paint "
+         "it yellow."),
         ("Arrange your marks",
          "With Select (S), drag a mark to move it. On a selected note, the handles "
          "change the size of the box and the right panel, the text size. Right-click "
          "and drag selects several marks at once."),
         ("Point at the exact sentence",
          "Drag over the PDF text and press “Comment on this sentence”: the note "
-         "you write is tied to that sentence, and the agent knows what you mean."),
-        ("Save and paste it in the chat",
+         "you write is tied to that sentence, and the AI knows what you mean."),
+        ("Save and send it",
          "Save (Ctrl+S) creates a copy of the PDF with your marks; the original is "
-         "never touched. Press Copy and paste the message in the chat along with the "
-         "PDF (it is also in the Save arrow: Copy prompt)."),
+         "never touched. Upload that copy to any AI chat, with no explanation: its "
+         "first page tells it how to read your marks. “Copy file” gets it ready to "
+         "paste in the chat with Ctrl+V."),
     ],
 }
 
@@ -90,6 +94,7 @@ _ES = [
                   "elegir texto del PDF"),
         ([["D"]], "Dibujar a mano alzada (queda puesta para varios trazos)"),
         ([["T"]], "Texto: escribir una nota (después vuelve sola a Seleccionar)"),
+        ([["R"]], "Resaltar: arrastrar sobre el texto (con texto ya elegido, lo resalta)"),
         ([["B"]], "Borrar: clic en una marca, o arrastrar por encima de varias"),
     ]),
     ("Elegir y editar", [
@@ -134,6 +139,7 @@ _EN = [
         ([["S"]], "Select: pick, move and edit marks; on an empty area, select PDF text"),
         ([["D"]], "Draw freehand (stays on for several strokes)"),
         ([["T"]], "Text: write a note (then goes back to Select by itself)"),
+        ([["H"]], "Highlight: drag over the text (with text already selected, highlights it)"),
         ([["E"]], "Erase: click a mark, or drag over several"),
     ]),
     ("Select and edit", [

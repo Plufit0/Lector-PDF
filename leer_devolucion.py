@@ -223,8 +223,7 @@ def informe(ruta, solo_marcas=False, png_dir=None):
 
         # Orden de lectura: de arriba hacia abajo, y a igual altura de izq a der.
         def clave(mk):
-            r = (A.bbox_trazo(mk["trazos"], mk.get("grosor", 2.0)) if mk["tipo"] == "lapiz"
-                 else A.rect_de(mk))
+            r = A.rect_marca(mk)
             return (round(r.y0 / 10), r.x0)
 
         print("--- pagina %d (%d marca(s)) ---" % (n + 1, len(lista)))
@@ -235,6 +234,12 @@ def informe(ruta, solo_marcas=False, png_dir=None):
             if not mk.get("nombre"):
                 mk["nombre"] = A.nombre_por_defecto(mk["tipo"], n, indice)
         for mk in sorted(lista, key=clave):
+            if mk["tipo"] == "resaltado":
+                print("\n  [RESALTADO]  pagina %d, color %s  ·  se llama \"%s\""
+                      % (n + 1, nombre_color(mk["color"]), mk.get("nombre") or "(sin nombre)"))
+                print("    Texto resaltado del documento:")
+                print("      %s" % cita(mk.get("cita") or "", 500))
+                continue
             if mk["tipo"] == "texto":
                 rect = A.rect_de(mk)
                 ancla = mk.get("ancla")
@@ -319,6 +324,7 @@ def informe(ruta, solo_marcas=False, png_dir=None):
 
 def nombre_color(c):
     refs = [("rojo", (0.88, 0.19, 0.19)), ("naranja", (0.96, 0.41, 0.03)),
+            ("amarillo", (1.0, 0.86, 0.12)),
             ("verde", (0.18, 0.62, 0.27)), ("azul", (0.10, 0.44, 0.76)),
             ("negro", (0.13, 0.15, 0.16))]
     mejor, dist = "?", 9.0

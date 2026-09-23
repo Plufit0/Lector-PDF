@@ -156,6 +156,7 @@ TEXTOS = {
     "modo_texto": {"es": "Texto", "en": "Text"},
     "modo_seleccionar": {"es": "Seleccionar", "en": "Select"},
     "modo_borrar": {"es": "Borrar", "en": "Erase"},
+    "modo_resaltar": {"es": "Resaltar", "en": "Highlight"},
     "v_grueso": {"es": "Grueso", "en": "Thick"},
     "v_deshacer": {"es": "Deshacer", "en": "Undo"},
     "v_rehacer": {"es": "Rehacer", "en": "Redo"},
@@ -175,6 +176,8 @@ TEXTOS = {
         "en": "Pick, move and edit marks. Dragging on an empty area selects text (S)"},
     "tip_borrar": {"es": "Borrar la marca en la que hagas clic, o arrastrá por encima de varias (B)",
                    "en": "Erase the mark you click on, or drag over several of them (E)"},
+    "tip_resaltar": {"es": "Resaltar texto: arrastrá sobre el texto del documento (R)",
+                     "en": "Highlight text: drag over the document's text (H)"},
     "tip_grueso": {"es": "Trazo grueso o fino", "en": "Thick or thin stroke"},
     "tip_deshacer": {"es": "Deshacer (Ctrl+Z)", "en": "Undo (Ctrl+Z)"},
     "tip_rehacer": {"es": "Rehacer (Ctrl+Y)", "en": "Redo (Ctrl+Y)"},
@@ -195,9 +198,8 @@ TEXTOS = {
     "tip_buscar_cerrar": {"es": "Cerrar la búsqueda (Esc)", "en": "Close search (Esc)"},
     "tip_idioma": {"es": "Cambiar el idioma del programa", "en": "Change the program's language"},
     "tip_ayuda": {"es": "Cómo se usa (F1)", "en": "How to use it (F1)"},
-    "tip_guardar": {"es": "Guardar la devolución y copiar el mensaje para el chat (Ctrl+S)",
-                    "en": "Save the feedback and copy the message for the chat (Ctrl+S)"},
-    "tip_guardar_mas": {"es": "Guardar como… (Ctrl+Shift+S)", "en": "Save as… (Ctrl+Shift+S)"},
+    "tip_guardar": {"es": "Guardar la devolución (Ctrl+S)", "en": "Save the feedback (Ctrl+S)"},
+    "tip_guardar_mas": {"es": "Guardar como… y copiar archivo", "en": "Save as… and copy file"},
     "tip_ojo": {"es": "Ocultar tus marcas para leer el documento limpio, y volver a mostrarlas",
                 "en": "Hide your marks to read the clean document, and show them again"},
     "color_rojo": {"es": "Rojo", "en": "Red"},
@@ -222,6 +224,8 @@ TEXTOS = {
     "pnl_comentar": {"es": "Comentar esta frase", "en": "Comment on this sentence"},
     "pnl_dibujar_sobre": {"es": "Dibujar sobre esta frase",
                           "en": "Draw over this sentence"},
+    "pnl_resaltar": {"es": "Resaltar esta frase", "en": "Highlight this sentence"},
+    "pnl_resaltado": {"es": "Resaltado", "en": "Highlight"},
     "pnl_nombre_interno": {"es": "NOMBRE INTERNO", "en": "INTERNAL NAME"},
     "pnl_ok": {"es": "OK", "en": "OK"},
     "pnl_referencia_a": {"es": "REFERENCIA A", "en": "REFERENCE TO"},
@@ -262,7 +266,6 @@ TEXTOS = {
     "menu_cortar": {"es": "Cortar", "en": "Cut"},
     "menu_pegar": {"es": "Pegar acá", "en": "Paste here"},
     "menu_guardar_como": {"es": "Guardar como…", "en": "Save as…"},
-    "menu_copiar_prompt": {"es": "Copiar prompt", "en": "Copy prompt"},
     # Sufijo del nombre de la copia guardada, en el idioma de la interfaz.
     "sufijo_devolucion": {"es": "devolucion", "en": "feedback"},
     "tecla_supr": {"es": "Supr", "en": "Del"},
@@ -298,8 +301,8 @@ TEXTOS = {
         "en": "Writing a note  —  Esc or click outside to confirm"},
     "pie_guardando": {"es": "Guardando…", "en": "Saving…"},
     "pie_guardado": {"es": "Guardado en %s.", "en": "Saved to %s."},
-    "pie_prompt_copiado": {"es": "Prompt copiado: pegalo en el chat junto con el PDF.",
-                           "en": "Prompt copied: paste it in the chat along with the PDF."},
+    "pie_archivo_copiado": {"es": "Archivo copiado: pegalo en el chat con Ctrl+V.",
+                            "en": "File copied: paste it in the chat with Ctrl+V."},
     "pie_copiadas": {"es": "%d marca(s) copiada(s). Ctrl+V para pegar.",
                      "en": "%d mark(s) copied. Ctrl+V to paste."},
     "pie_pegadas": {"es": "%d marca(s) pegada(s).", "en": "%d mark(s) pasted."},
@@ -328,75 +331,28 @@ TEXTOS = {
               "try Save as… (Ctrl+Shift+S) with a different name."},
 
     # ----------------------------------------------------- dialogo guardado --
+    # Rehecho en sept-2026: ya no hay mensaje para pegar. La devolucion trae una
+    # hoja-guia que le explica a la IA como leerla (guia.py).
     "dlg_guardado_titulo": {"es": "Guardado", "en": "Saved"},
     "dlg_devolucion_guardada": {"es": "Devolución guardada", "en": "Feedback saved"},
     "dlg_guardado_info": {
-        "es": "Para pasársela a una IA: tocá Copiar y pegá el mensaje en el chat,\n"
-              "junto con el PDF. El mensaje le explica cómo separar el documento\n"
-              "original de tus marcas.",
-        "en": "To hand it to an AI: press Copy and paste the message in the chat,\n"
-              "along with the PDF. The message explains how to separate the original\n"
-              "document from your marks."},
+        "es": "Ya está lista para mandar: subila a cualquier chat de IA (ChatGPT, Gemini, "
+              "Claude…) y pedile lo que necesites. No hace falta explicarle nada: la primera "
+              "hoja del PDF le dice cómo leer tus marcas.",
+        "en": "It is ready to send: upload it to any AI chat (ChatGPT, Gemini, Claude…) and "
+              "ask for what you need. No need to explain anything: the first page of the PDF "
+              "tells it how to read your marks."},
+    "dlg_copiar_archivo": {"es": "Copiar archivo", "en": "Copy file"},
+    "tip_copiar_archivo": {
+        "es": "Copia el PDF para pegarlo en el chat con Ctrl+V",
+        "en": "Copies the PDF so you can paste it in the chat with Ctrl+V"},
+    "dlg_archivo_copiado": {"es": "✓ Copiado. Ahora, en el chat, apretá Ctrl+V.",
+                            "en": "✓ Copied. Now press Ctrl+V in the chat."},
+    "dlg_archivo_no_copiado": {
+        "es": "No se pudo copiar. Usá Abrir carpeta y arrastrá el archivo al chat.",
+        "en": "It could not be copied. Use Open folder and drag the file into the chat."},
     "dlg_abrir_carpeta": {"es": "Abrir carpeta", "en": "Open folder"},
-    "dlg_copiar": {"es": "Copiar", "en": "Copy"},
-    "dlg_copiar_ruta": {"es": "Copiar solo la ruta", "en": "Copy just the path"},
     "dlg_listo": {"es": "Listo", "en": "Done"},
-
-    # ------------------------------------------- mensaje que se pega al chat --
-    # El prompt para CUALQUIER IA: un chatbot de navegador al que se le adjunta
-    # el PDF, o un agente con acceso a la PC. Explica como separar el documento
-    # original de las marcas usando solo lo que trae el PDF (anotaciones
-    # estandar). El comando del final es opcional, para quien puede ejecutarlo.
-    # Lleva 4 datos, en este orden:
-    # %s = archivo, %s = Python con las librerias, %s = extractor, %s = archivo.
-    "mensaje_chat": {
-        "es": "Te paso un PDF con mi devolución: leí el documento y lo marqué encima con "
-              "dibujos y notas. El PDF va adjunto (en esta computadora está en: %s).\n"
-              "\n"
-              "CÓMO LEERLO: separá dos cosas.\n"
-              "1. EL DOCUMENTO ORIGINAL: el texto impreso de las páginas. Leelo sin las "
-              "anotaciones.\n"
-              "2. MI DEVOLUCIÓN: las anotaciones del PDF cuyo autor es \"Devolucion\".\n"
-              "   - Notas (FreeText): recuadros amarillos; el texto completo está en su "
-              "contenido.\n"
-              "   - Dibujos (Ink): trazos a mano. Mirá la página para ver si es un "
-              "círculo, un tachado o una flecha, y qué texto tocan.\n"
-              "   - Subrayados tenues (Underline) cuyo nombre termina en \"-ancla\": "
-              "marcan la frase exacta a la que se refiere la marca con el nombre del "
-              "principio; su contenido es esa frase.\n"
-              "   - Si el asunto de una marca empieza con \"ref:\", se refiere a otra "
-              "marca con ese nombre.\n"
-              "Las marcas sin frase atada se refieren a lo que tienen al lado o debajo.\n"
-              "Para cada marca, decime en qué página está, qué parte del documento señala "
-              "y qué te pido.\n"
-              "\n"
-              "Si podés ejecutar comandos en esta computadora, este hace la separación "
-              "solo (texto original, cada marca con su frase e imágenes de las páginas "
-              "marcadas):\n"
-              "\"%s\" \"%s\" \"%s\"\n",
-        "en": "Here is a PDF with my feedback: I read the document and marked it up with "
-              "drawings and notes. The PDF is attached (on this computer it is at: %s).\n"
-              "\n"
-              "HOW TO READ IT: separate two things.\n"
-              "1. THE ORIGINAL DOCUMENT: the printed text of the pages. Read it without "
-              "the annotations.\n"
-              "2. MY FEEDBACK: the PDF annotations whose author is \"Devolucion\".\n"
-              "   - Notes (FreeText): yellow boxes; the full text is in their contents.\n"
-              "   - Drawings (Ink): freehand strokes. Look at the page to see whether it "
-              "is a circle, a strikethrough or an arrow, and what text they touch.\n"
-              "   - Faint underlines (Underline) whose name ends in \"-ancla\": they mark "
-              "the exact phrase the mark with the name before it refers to; their "
-              "contents are that phrase.\n"
-              "   - If a mark's subject starts with \"ref:\", it refers to another mark "
-              "with that name.\n"
-              "Marks without a tied phrase refer to what is next to or under them.\n"
-              "For each mark, tell me which page it is on, what part of the document it "
-              "points at and what I am asking for.\n"
-              "\n"
-              "If you can run commands on this computer, this one does the separation for "
-              "you (original text, each mark with its phrase, and images of the marked "
-              "pages):\n"
-              "\"%s\" \"%s\" \"%s\"\n"},
 
     # ------------------------------------------------------- app: titulo -----
     "app_titulo": {"es": "Lector PDF", "en": "Lector PDF"},

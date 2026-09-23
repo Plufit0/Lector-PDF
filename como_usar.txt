@@ -1,7 +1,7 @@
 LECTOR PDF
 ==========
 
-Marcá cualquier PDF con dibujos y notas, y pasáselo a un agente.
+Marcá cualquier PDF con dibujos, notas y resaltados, y pasáselo a una IA.
 
 
 Cómo se usa
@@ -10,17 +10,19 @@ Cómo se usa
    carpeta y queda recordada para la próxima vez; “Abrir archivo…” abre un PDF
    de cualquier lado.
 2. Marcá encima. Dibujar (D) para trazar a mano. Texto (T) para escribir una
-   nota: clic donde la querés, o arrastrá para elegir su tamaño.
+   nota: clic donde la querés, o arrastrá para elegir su tamaño. Resaltar (R):
+   arrastrá sobre el texto para pintarlo de amarillo.
 3. Acomodá lo marcado. Con Seleccionar (S), arrastrá una marca para moverla.
    En una nota elegida, las manijas cambian el tamaño del recuadro y el panel
    de la derecha, el tamaño de letra. Clic derecho y arrastrar elige varias
    marcas a la vez.
 4. Señalá la frase exacta. Arrastrá sobre el texto del PDF y tocá “Comentar
-   esta frase”: la nota que escribas queda atada a esa frase, y el agente sabe
-   a qué te referís.
-5. Guardá y pegá en el chat. Guardar (Ctrl+S) crea una copia del PDF con tus
-   marcas; el original no se toca. Tocá Copiar y pegá el mensaje en el chat
-   junto con el PDF (también está en la flechita de Guardar: Copiar prompt).
+   esta frase”: la nota que escribas queda atada a esa frase, y la IA sabe a
+   qué te referís.
+5. Guardá y mandalo. Guardar (Ctrl+S) crea una copia del PDF con tus marcas;
+   el original no se toca. Subí esa copia a cualquier chat de IA, sin
+   explicarle nada: la primera hoja le dice cómo leer tus marcas. “Copiar
+   archivo” la deja lista para pegar en el chat con Ctrl+V.
 
 Pasá el mouse sobre cualquier botón para ver qué hace y su atajo.
 
@@ -35,6 +37,8 @@ HERRAMIENTAS
                              trazos)
   T                          Texto: escribir una nota (después vuelve sola a
                              Seleccionar)
+  R                          Resaltar: arrastrar sobre el texto (con texto ya
+                             elegido, lo resalta)
   B                          Borrar: clic en una marca, o arrastrar por encima
                              de varias
 

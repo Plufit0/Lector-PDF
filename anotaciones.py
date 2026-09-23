@@ -40,6 +40,7 @@ import os
 
 import pymupdf
 
+import guia
 import idiomas
 
 # Autor con el que se firman las anotaciones propias. Si esto cambia, los PDFs
@@ -89,6 +90,10 @@ CLAVE_ANCHO = "LectorAncho"
 # y su opacidad. Tenue a proposito: tiene que senalar sin ensuciar la hoja ni
 # competir con lo que el usuario escribio.
 COLOR_ANCLA = (0.85, 0.65, 0.0)
+# Resaltador (herramienta Resaltar, sept-2026): el amarillo clasico de Acrobat y
+# Office. Se guarda como anotacion Highlight estandar, que cualquier lector
+# dibuja "multiplicando" (el texto de abajo se sigue leyendo).
+COLOR_RESALTADOR = (1.0, 0.86, 0.12)
 OPACIDAD_ANCLA = 0.2
 # Con esto termina el nombre del resaltado, para poder emparejarlo con su nota.
 SUFIJO_ANCLA = "-ancla"
@@ -137,7 +142,8 @@ def nombre_por_defecto(tipo, pagina, indice):
     Sirve para que el usuario y el agente puedan hablar de una marca concreta
     ("lo que dice la nota-p05-3") sin tener el documento delante.
     """
-    return "%s-p%02d-%d" % ("dibujo" if tipo == "lapiz" else "nota", pagina + 1, indice + 1)
+    base = {"lapiz": "dibujo", "resaltado": "resaltado"}.get(tipo, "nota")
+    return "%s-p%02d-%d" % (base, pagina + 1, indice + 1)
 
 
 _FUENTE_NOTA = None
@@ -355,6 +361,18 @@ def rect_de(marca):
                      marca.get("ancho"), marca.get("cuerpo"))
 
 
+def rect_marca(marca):
+    """Recuadro de cualquier marca (dibujo, nota o resaltado), en puntos PDF."""
+    if marca["tipo"] == "lapiz":
+        return bbox_trazo(marca["trazos"], marca.get("grosor", GROSOR_POR_DEFECTO))
+    if marca["tipo"] == "resaltado":
+        r = pymupdf.Rect()
+        for x in marca.get("rects") or []:
+            r = pymupdf.Rect(x) if r.is_empty else r | pymupdf.Rect(x)
+        return r
+    return rect_de(marca)
+
+
 def bbox_trazo(trazos, grosor):
     """Recuadro que envuelve a un trazo de lapiz, con el margen del grosor."""
     xs = [p[0] for t in trazos for p in t]
@@ -472,11 +490,25 @@ def guardar(ruta_origen, ruta_destino, marcas):
 
     doc = pymupdf.open(ruta_origen)
     try:
+        # Una devolucion reabierta trae su hoja-guia vieja: se saca y se hace
+        # de nuevo al final, asi siempre coincide con las marcas (ver guia.py).
+        guia.quitar_hojas(doc)
         # Se limpian TODAS las paginas, no solo las que tienen marcas: si no,
         # una marca vieja de una pagina que ahora quedo vacia sobrevivia en el
         # archivo sin que el visor la mostrara.
         for pagina in doc:
             _limpiar_propias(pagina)
+        # Las palabras de cada hoja, leidas ANTES de poner las marcas: la guia
+        # dice sobre que texto del documento cae cada marca.
+        entradas = []
+        try:
+            palabras = {n: guia.palabras_de(doc[n]) for n in marcas
+                        if 0 <= n < doc.page_count and marcas[n]}
+            entradas = guia.armar(
+                {n: l for n, l in marcas.items() if n in palabras}, palabras,
+                rect_marca)
+        except Exception as e:
+            fallos.append("hoja-guia: %s" % e)
         for numero, lista in sorted(marcas.items()):
             if numero < 0 or numero >= doc.page_count:
                 continue
@@ -526,6 +558,17 @@ def guardar(ruta_origen, ruta_destino, marcas):
                         # /Contents: el texto entero, pase lo que pase con el dibujo.
                         annot.set_info(title=AUTOR, content=texto)
                         annot.update()
+                    elif marca["tipo"] == "resaltado":
+                        quads = [(pymupdf.Rect(r) * m).normalize().quad
+                                 for r in marca.get("rects") or []]
+                        if not quads:
+                            continue
+                        annot = pagina.add_highlight_annot(quads)
+                        annot.set_colors(stroke=tuple(marca["color"]))
+                        # En /Contents va la frase resaltada: se entiende sola
+                        # aunque se lea con otro programa.
+                        annot.set_info(title=AUTOR, content=(marca.get("cita") or "")[:2000])
+                        annot.update()
                     else:
                         continue
                 except Exception as e:
@@ -556,6 +599,28 @@ def guardar(ruta_origen, ruta_destino, marcas):
                     # reabrir la nota se parte igual que antes.
                     if ancho:
                         doc.xref_set_key(annot.xref, CLAVE_ANCHO, "%.2f" % float(ancho))
+
+        # La devolucion se explica sola (guia.py): numero junto a cada marca,
+        # linea punteada hasta la frase atada, y la hoja-guia al principio.
+        # Va al final: insertar la hoja corre los numeros de pagina.
+        if entradas:
+            try:
+                ocupados = {}      # por pagina: marcas y numeros que no conviene tapar
+                for e in entradas:
+                    ocupados.setdefault(e["pagina"], []).append(e["rect"])
+                for i, e in enumerate(entradas, 1):
+                    pagina = doc[e["pagina"]]
+                    m = pagina.derotation_matrix
+                    if e["ancla_rect"] is not None:
+                        guia.poner_lazo(doc, pagina, m, e["rect"], e["ancla_rect"], i, AUTOR)
+                    otros = [r for r in ocupados[e["pagina"]] if r is not e["rect"]]
+                    x, y = guia.lugar_numero(e["rect"], palabras.get(e["pagina"], []),
+                                             otros, pagina.rect)
+                    ocupados[e["pagina"]].append(pymupdf.Rect(x, y, x + 15, y + 15))
+                    guia.poner_numero(doc, pagina, m, x, y, i, AUTOR)
+                guia.poner_hoja(doc, entradas)
+            except Exception as e:
+                fallos.append("hoja-guia: %s" % e)
 
         meta = dict(doc.metadata or {})
         meta["producer"] = MARCA_PRODUCTOR
@@ -615,6 +680,7 @@ def doc_sin_marcas(ruta):
     el usuario encima) y el agente leeria sus propias notas como parte del documento.
     """
     doc = pymupdf.open(ruta)
+    guia.quitar_hojas(doc)
     for numero in range(doc.page_count):
         _limpiar_propias(doc[numero])
     return doc
@@ -697,6 +763,9 @@ def cargar(doc):
     Se usa al abrir un PDF que ya fue marcado antes, para poder seguir
     editandolo en vez de empezar de nuevo.
     """
+    # La hoja-guia no es parte del documento: se saca (en memoria) para que las
+    # paginas se numeren como en el original. OJO: modifica el doc recibido.
+    guia.quitar_hojas(doc)
     marcas = {}
     for numero in range(doc.page_count):
         pagina = doc[numero]
@@ -732,6 +801,26 @@ def cargar(doc):
                 if info.get("title", "") != AUTOR:
                     continue
                 tipo = annot.type[1] if isinstance(annot.type, (list, tuple)) else ""
+                nm = info.get("id", "") or ""
+                if nm.startswith(guia.PREFIJO):
+                    continue      # numero o linea de la guia: se rehace al guardar
+                if tipo == "Highlight" and not nm.endswith(SUFIJO_ANCLA):
+                    # Un resaltado hecho con la herramienta Resaltar.
+                    v = annot.vertices or []
+                    rects = []
+                    for i in range(0, len(v) - len(v) % 4, 4):
+                        r = (pymupdf.Quad(v[i:i + 4]).rect * m).normalize()
+                        rects.append((r.x0, r.y0, r.x1, r.y1))
+                    if rects:
+                        marcas.setdefault(numero, []).append({
+                            "tipo": "resaltado", "rects": rects,
+                            "cita": info.get("content", "") or "",
+                            "color": tuple(((annot.colors or {}).get("stroke")
+                                            or COLOR_RESALTADOR)[:3]),
+                            "nombre": limpiar_nombre(nm),
+                            "ancla": None, "ref": _leer_ref(info),
+                        })
+                    continue
                 if tipo in ("Underline", "Highlight"):
                     continue      # ya se recogio arriba, va dentro de su nota
                 color = (annot.colors or {}).get("stroke") or (0.88, 0.19, 0.19)

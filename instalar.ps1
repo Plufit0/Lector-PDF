@@ -50,7 +50,7 @@ trap {
 # README, los scripts de instalacion) es material de trabajo y no viaja. El
 # autotest SI viaja a proposito: es la red de seguridad y se corre desde la
 # carpeta instalada.
-$DEL_PROGRAMA = @("lector.pyw", "anotaciones.py", "errores.py", "ayuda.py", "mano.cur",
+$DEL_PROGRAMA = @("lector.pyw", "anotaciones.py", "guia.py", "errores.py", "ayuda.py", "mano.cur",
                   "idiomas.py", "leer_devolucion.py", "lector.ico", "autotest.py",
                   "como_usar.txt")
 
