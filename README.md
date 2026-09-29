@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Lector PDF" width="820">
-</p>
-
-<p align="center">
   <a href="#-español">🇦🇷 Español</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#-english">🇺🇸 English</a>
 </p>
 
 ---
 
 ## 🇦🇷 Español
+
+<p align="center">
+  <img src="docs/banner.png" alt="Lector PDF" width="820">
+</p>
 
 **Lector PDF** abre cualquier PDF, te deja marcarlo encima con dibujos y notas, y
 lo guarda de forma que un agente conversacional (un asistente de IA) entienda
@@ -131,6 +131,10 @@ la última carpeta van a `%LOCALAPPDATA%\LectorPDF`.
 ---
 
 ## 🇺🇸 English
+
+<p align="center">
+  <img src="docs/banner-en.png" alt="Lector PDF" width="820">
+</p>
 
 **Lector PDF** opens any PDF, lets you mark it up with drawings and notes, and
 saves it so that a conversational agent (an AI assistant) understands exactly
