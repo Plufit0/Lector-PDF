@@ -35,6 +35,7 @@ import io
 import pymupdf
 
 import idiomas
+import ocr
 
 CLAVE_PAGINA = "LectorGuia"     # clave propia en el diccionario de la hoja-guía
 PREFIJO = "guia-"               # /NM de los números y líneas: no son marcas
@@ -157,9 +158,10 @@ def _nombre_color(c):
 # ------------------------------------------------------ texto de la página ----
 
 def palabras_de(pagina):
-    """Palabras de la hoja (sin las marcas propias) con su recuadro."""
+    """Palabras de la hoja (sin las marcas propias) con su recuadro.
+    Si la hoja es un escaneo, salen del OCR (ver ocr.py)."""
     salida = []
-    for w in pagina.get_text("words"):
+    for w in ocr.palabras(pagina):
         t = _limpio(w[4])
         if t:
             salida.append((pymupdf.Rect(w[:4]), t))

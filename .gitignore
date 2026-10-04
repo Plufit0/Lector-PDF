@@ -10,6 +10,11 @@ ultimo_error.txt
 # Archivos temporales que deja un guardado interrumpido.
 *.tmp-lector
 
+# Lo que arma armar_exe.ps1 (PyInstaller). El .exe se sube a GitHub Releases,
+# no al repositorio.
+build/
+dist/
+
 # ---------------------------------------------------------------------------
 # ARCHIVOS DEL ASISTENTE (Claude) — REGLA OBLIGATORIA
 # ---------------------------------------------------------------------------

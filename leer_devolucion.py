@@ -39,6 +39,7 @@ for _flujo in (sys.stdout, sys.stderr):
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pymupdf
 import anotaciones as A
+import ocr
 
 DPI_PNG = 120
 # Cuanto se estira hacia arriba el recuadro de un trazo para encontrar el texto:
@@ -49,7 +50,7 @@ ALTO_RENGLON = 14.0
 def palabras(pagina):
     """Palabras del original con su recuadro: (rect, texto)."""
     salida = []
-    for w in pagina.get_text("words"):
+    for w in ocr.palabras(pagina):      # con OCR si la hoja es un escaneo
         salida.append((pymupdf.Rect(w[0], w[1], w[2], w[3]), w[4]))
     return salida
 
@@ -202,6 +203,16 @@ def informe(ruta, solo_marcas=False, png_dir=None):
         print("\n### CANAL 1 — EL DOCUMENTO (texto original, sin las marcas)\n")
         for n in range(limpio.page_count):
             texto = limpio[n].get_text().strip()
+            if not texto:
+                # Hoja escaneada: el texto sale del OCR (ver ocr.py), por
+                # renglon y avisando que es leido de la imagen.
+                ws = sorted(ocr.palabras(limpio[n]), key=lambda w: (w[5], w[6], w[7]))
+                renglones = {}
+                for w in ws:
+                    renglones.setdefault((w[5], w[6]), []).append(w[4])
+                if renglones:
+                    texto = ("(texto leido de la imagen con OCR: puede tener errores)\n"
+                             + "\n".join(" ".join(r) for r in renglones.values()))
             print("--- pagina %d ---" % (n + 1))
             print(texto if texto else "(pagina sin texto: probablemente una imagen o un diagrama)")
             print()

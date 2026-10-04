@@ -50,9 +50,11 @@ trap {
 # README, los scripts de instalacion) es material de trabajo y no viaja. El
 # autotest SI viaja a proposito: es la red de seguridad y se corre desde la
 # carpeta instalada.
-$DEL_PROGRAMA = @("lector.pyw", "anotaciones.py", "guia.py", "errores.py", "ayuda.py", "mano.cur",
+$DEL_PROGRAMA = @("lector.pyw", "anotaciones.py", "guia.py", "ocr.py", "errores.py", "ayuda.py", "mano.cur",
                   "idiomas.py", "leer_devolucion.py", "lector.ico", "autotest.py",
-                  "como_usar.txt")
+                  "como_usar.txt",
+                  # El OCR (ver ocr.py): las letras de Tesseract en espanol e ingles.
+                  "tessdata\eng.traineddata", "tessdata\spa.traineddata")
 
 Write-Host ""
 Write-Host "=== Instalando el Lector PDF ==="
@@ -66,7 +68,9 @@ foreach ($f in $DEL_PROGRAMA) {
 
 New-Item -ItemType Directory -Force -Path $Destino | Out-Null
 foreach ($f in $DEL_PROGRAMA) {
-    Copy-Item (Join-Path $Origen $f) -Destination $Destino -Force
+    $hacia = Join-Path $Destino $f
+    New-Item -ItemType Directory -Force -Path (Split-Path $hacia) | Out-Null
+    Copy-Item (Join-Path $Origen $f) -Destination $hacia -Force
     Write-Host "  copiado  $f"
 }
 

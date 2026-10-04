@@ -64,24 +64,31 @@ y listo: no hace falta copiar ningún mensaje aparte.
 
 Pasando el mouse por cualquier botón aparece qué hace y su atajo.
 
-### Instalación
+### Descargar y usar
 
-Requiere **Windows** y **Python 3.11** con dos librerías:
+No hay que instalar nada. Funciona en **Windows**.
 
-```
-python -m pip install pymupdf pillow
-```
+1. Bajá **[LectorPDF.exe](https://github.com/Plufit0/Lector-PDF/releases/latest/download/LectorPDF.exe)**
+   (o entrá a **Releases**, a la derecha de esta página, y en la última versión
+   tocá `LectorPDF.exe`).
+2. Hacé doble clic en el archivo bajado. Si querés, movelo antes a donde te
+   quede cómodo (el escritorio, una carpeta tuya).
 
-Después, desde una consola de PowerShell **como administrador**, en la carpeta
-del proyecto:
+La primera vez Windows puede mostrar un cartel azul que dice «Windows protegió
+su PC»: tocá **Más información** y después **Ejecutar de todas formas**. Aparece
+porque el programa es nuevo y no está firmado por una empresa, no porque tenga
+algo malo.
 
-```
-powershell -ExecutionPolicy Bypass -File instalar.ps1
-```
+<details>
+<summary>Desde el código (para quien quiera modificarlo)</summary>
 
-Copia el programa a `C:\Program Files\Mios\LectorPDF` y crea el acceso directo
-*Lector PDF* en el escritorio. Si Python está en otro lugar:
-`instalar.ps1 -Python "ruta\a\pythonw.exe"`.
+Requiere **Python 3.11** con `python -m pip install pymupdf pillow`. Se abre con
+`pythonw lector.pyw`. Para armar el `.exe`: `python -m pip install pyinstaller`
+y después `powershell -ExecutionPolicy Bypass -File armar_exe.ps1` (sale en
+`dist\`). `instalar.ps1` deja una copia en `C:\Program Files\Mios\LectorPDF`
+con acceso directo en el escritorio.
+
+</details>
 
 ### Cómo lee la IA una devolución
 
@@ -89,12 +96,14 @@ Sola, con el PDF: la hoja-guía del principio está escrita como texto común, a
 que la lee cualquier IA de chat (y cualquier persona). Dice, por ejemplo, "Marca 3:
 raya que cruza por el medio la palabra *Casa* (parece un tachado)" o "Marca 4: nota
 atada a la palabra *Negro*". Se arma sola al guardar, con cuentas sobre la posición
-de cada marca: no usa ninguna IA ni internet.
+de cada marca: no usa ninguna IA ni internet. Sirve también con PDFs escaneados
+o hechos de fotos: el programa lee solo el texto de la imagen.
 
-Opcional, para un agente que puede ejecutar comandos en tu PC:
+Opcional, para un agente que puede ejecutar comandos en tu PC (con el código y
+Python):
 
 ```
-"ruta\a\python.exe" "C:\Program Files\Mios\LectorPDF\leer_devolucion.py" "archivo-devolucion.pdf"
+python leer_devolucion.py "archivo-devolucion.pdf"
 ```
 
 Devuelve el texto original limpio, cada marca con su nombre y la frase sobre la
@@ -117,13 +126,15 @@ saca la hoja-guía y los números, y los vuelve a hacer al guardar.
 | `lector.pyw` | el programa: lista de PDFs, visor y herramientas |
 | `anotaciones.py` | guardar y leer las marcas dentro del PDF |
 | `guia.py` | la hoja-guía y los números que hacen que la devolución se explique sola |
+| `ocr.py` + `tessdata/` | lee el texto de las hojas escaneadas (español e inglés) |
 | `leer_devolucion.py` | el lector de devoluciones que corre el agente |
 | `idiomas.py` | todos los textos de la interfaz, en español e inglés |
 | `ayuda.py` | la ayuda del botón `?` (F1): pasos y atajos |
 | `errores.py` | registro de errores de la sesión |
 | `mano.cur` | el cursor de mano para arrastrar la hoja |
 | `autotest.py` | pruebas automáticas: `python autotest.py` |
-| `instalar.ps1` | instalador |
+| `instalar.ps1` | copia el programa a Program Files (desde el código) |
+| `armar_exe.ps1` + `LectorPDF.spec` | arman `LectorPDF.exe` |
 
 Nada se escribe junto al programa: el registro de errores, el idioma elegido y
 la última carpeta van a `%LOCALAPPDATA%\LectorPDF`.
@@ -189,23 +200,30 @@ chat and that's it: no separate message to copy.
 
 Hovering over any button shows what it does and its shortcut.
 
-### Installation
+### Download and use
 
-Requires **Windows** and **Python 3.11** with two libraries:
+Nothing to install. Runs on **Windows**.
 
-```
-python -m pip install pymupdf pillow
-```
+1. Download **[LectorPDF.exe](https://github.com/Plufit0/Lector-PDF/releases/latest/download/LectorPDF.exe)**
+   (or open **Releases**, on the right of this page, and click `LectorPDF.exe`
+   in the latest version).
+2. Double-click the downloaded file. You can move it first to wherever suits
+   you (the desktop, one of your folders).
 
-Then, from a PowerShell console **as administrator**, in the project folder:
+The first time, Windows may show a blue box saying "Windows protected your PC":
+click **More info** and then **Run anyway**. It shows up because the program is
+new and not signed by a company, not because there is anything wrong with it.
 
-```
-powershell -ExecutionPolicy Bypass -File instalar.ps1
-```
+<details>
+<summary>From the source code (for anyone who wants to modify it)</summary>
 
-It copies the program to `C:\Program Files\Mios\LectorPDF` and creates the
-*Lector PDF* shortcut on the desktop. If Python lives elsewhere:
-`instalar.ps1 -Python "path\to\pythonw.exe"`.
+Requires **Python 3.11** with `python -m pip install pymupdf pillow`. Run it with
+`pythonw lector.pyw`. To build the `.exe`: `python -m pip install pyinstaller`
+and then `powershell -ExecutionPolicy Bypass -File armar_exe.ps1` (it lands in
+`dist\`). `instalar.ps1` puts a copy in `C:\Program Files\Mios\LectorPDF` with a
+desktop shortcut.
+
+</details>
 
 ### How an AI reads a returned file
 
@@ -213,12 +231,14 @@ On its own, from the PDF: the guide page at the start is written as plain text,
 so any chat AI (and any person) can read it. It says, for example, "Mark 3: a line
 through the middle of the word *Casa* (looks like a strikethrough)" or "Mark 4:
 note tied to the word *Negro*". It is built when saving, from the position of
-each mark: no AI and no internet involved.
+each mark: no AI and no internet involved. It also works with scanned PDFs or
+PDFs made of photos: the program reads the text in the image by itself.
 
-Optional, for an agent that can run commands on your PC:
+Optional, for an agent that can run commands on your PC (with the source code
+and Python):
 
 ```
-"path\to\python.exe" "C:\Program Files\Mios\LectorPDF\leer_devolucion.py" "file-devolucion.pdf"
+python leer_devolucion.py "file-devolucion.pdf"
 ```
 
 It returns the clean original text, each mark with its name and the sentence it
@@ -241,13 +261,15 @@ the guide page and the numbers, and rebuilds them when saving.
 | `lector.pyw` | the program: PDF list, viewer and tools |
 | `anotaciones.py` | saving and reading marks inside the PDF |
 | `guia.py` | the guide page and numbers that make the returned file self-explanatory |
+| `ocr.py` + `tessdata/` | reads the text of scanned pages (Spanish and English) |
 | `leer_devolucion.py` | the returned-file reader the agent runs |
 | `idiomas.py` | every interface text, in Spanish and English |
 | `ayuda.py` | the help behind the `?` button (F1): steps and shortcuts |
 | `errores.py` | session error log |
 | `mano.cur` | the hand cursor for dragging the sheet |
 | `autotest.py` | automated tests: `python autotest.py` |
-| `instalar.ps1` | installer |
+| `instalar.ps1` | copies the program to Program Files (from source) |
+| `armar_exe.ps1` + `LectorPDF.spec` | build `LectorPDF.exe` |
 
 Nothing is written next to the program: the error log, the chosen language and
 the last folder go to `%LOCALAPPDATA%\LectorPDF`.

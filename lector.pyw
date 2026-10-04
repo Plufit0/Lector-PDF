@@ -82,6 +82,7 @@ try:
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import anotaciones as A
+    import ocr
     import errores
     import ayuda
 except Exception as _e:      # noqa: BLE001 - se reporta abajo, en main()
@@ -2268,7 +2269,9 @@ class Visor(ttk.Frame):
 
     def _palabras_pagina(self):
         if getattr(self, "_cache_palabras_pno", None) != self.pno:
-            self._cache_palabras = self._pagina().get_text("words")
+            # Con OCR si la hoja es un escaneo: asi tambien se puede elegir y
+            # resaltar texto en una foto (ver ocr.py).
+            self._cache_palabras = ocr.palabras(self._pagina())
             self._cache_palabras_pno = self.pno
         return self._cache_palabras
 
